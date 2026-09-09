@@ -10,3 +10,25 @@ services:
       POSTGRES_DB: db
     ports:
       - 54001:5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d db"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  database-test:
+    image: postgres:18
+    restart: always
+    shm_size: 128mb
+    environment:
+      PGUSER: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: test
+    ports:
+      - 54002:5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d test"]
+      interval: 2s
+      timeout: 5s
+      retries: 15

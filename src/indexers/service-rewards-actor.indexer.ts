@@ -135,6 +135,8 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<EventType> {
           break;
 
         case 'OrchestratorRemoved':
+          // TODO: release orchestrator bindings, need to clarify explicit
+          // release rules
           await tx
             .updateTable('service_orchestrator')
             .set({

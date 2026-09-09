@@ -5,7 +5,7 @@ import { QuarterParametersDto } from '@/dto/quarter-parameters.dto';
 import { QuarterDto } from '@/dto/quarter.dto';
 import { RECENT_NODE_CLIENT } from '@/lib/constants';
 import type { ConfigShape, FilecoinPublicClient } from '@/lib/types';
-import { divideBigInt } from '@/lib/utils';
+import { divideBigInt, numericToBigInt } from '@/lib/utils';
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BigNumber } from 'bignumber.js';
@@ -88,7 +88,7 @@ export class QuartersService {
       .where('quarter_num', '=', quarterNum - 1)
       .executeTakeFirst();
     const previousQuarterBoundVolumeAttoUsd = previousQuarterBoundVolumeResult
-      ? BigInt(previousQuarterBoundVolumeResult.volume_atto_usd)
+      ? numericToBigInt(previousQuarterBoundVolumeResult.volume_atto_usd)
       : 0n;
     const previousQuarterBoundVolumeUsd = divideBigInt(
       previousQuarterBoundVolumeAttoUsd,
@@ -134,7 +134,7 @@ export class QuartersService {
       .selectFrom('parameters_by_quarter')
       .distinctOn('parameter_type')
       .select(['parameter_type', 'parameter_value'])
-      .where('update_epoch', '<', quarterNum.toString())
+      .where('quarter_num', '<', quarterNum)
       .orderBy('parameter_type')
       .orderBy('quarter_num', 'desc')
       .orderBy('update_epoch', 'desc')
@@ -188,7 +188,7 @@ export class QuartersService {
           eb('admittance_quarter_num', '<', quarterNum),
           eb.or([
             eb('removal_quarter_num', 'is', null),
-            eb('removal_quarter_num', '>', quarterNum),
+            eb('removal_quarter_num', '>=', quarterNum),
           ]),
         ]);
       })
@@ -245,7 +245,7 @@ export class QuartersService {
           eb('admittance_quarter_num', '<', quarterNum),
           eb.or([
             eb('removal_quarter_num', 'is', null),
-            eb('removal_quarter_num', '>', quarterNum),
+            eb('removal_quarter_num', '>=', quarterNum),
           ]),
         ]);
       })

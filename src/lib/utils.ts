@@ -1,3 +1,4 @@
+import { BigNumber } from 'bignumber.js';
 import { createPublicClient, extractChain, http } from 'viem';
 import { prettifyError } from 'zod';
 import { CONFIG_SCHEMA, SUPPORTED_CHAINS } from './constants';
@@ -70,4 +71,29 @@ export function minBigInt(...inputs: [bigint, ...bigint[]]): bigint {
   return inputs.reduce((min, current) => {
     return current < min ? current : min;
   });
+}
+
+export function numericToBigInt(value: string | number | bigint): bigint {
+  const result = BigNumber(value.toString()).toBigInt();
+
+  if (result === null) {
+    throw new TypeError(`Expected an integer numeric value, received ${value}`);
+  }
+
+  return result;
+}
+
+export function compareNullableNumber<T extends number | bigint>(
+  a: T | null,
+  b: T | null,
+  order: 'asc' | 'desc',
+): -1 | 1 | 0 {
+  const lowerValue = order === 'asc' ? -1 : 1;
+  const higherValue = (lowerValue * -1) as -1 | 1;
+
+  if (a === null && b === null) return 0;
+  if (a === null) return lowerValue;
+  if (b === null) return higherValue;
+
+  return a < b ? lowerValue : a > b ? higherValue : 0;
 }

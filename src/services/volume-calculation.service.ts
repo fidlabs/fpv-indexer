@@ -3,7 +3,7 @@ import { ServiceOrchestratorQuarterlyVolumeParametersDto } from '@/dto/service-o
 import { ServiceOrchestratorQuarterlyVolumeDto } from '@/dto/service-orchestrator-quarterly-volume.dto';
 import { QuarterNumber } from '@/lib/quarter-number';
 import { ConfigShape } from '@/lib/types';
-import { divideBigInt } from '@/lib/utils';
+import { divideBigInt, numericToBigInt } from '@/lib/utils';
 import { QuartersService } from '@/services/quarters.service';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -212,13 +212,15 @@ export class VolumeCalculationService {
       ])
       .executeTakeFirstOrThrow();
 
-    const stablecoinVolumeAttoUsd = BigInt(stablecoinVolume.volume_atto_usd);
+    const stablecoinVolumeAttoUsd = numericToBigInt(
+      stablecoinVolume.volume_atto_usd,
+    );
     const stablecoinVolumeUsd = divideBigInt(
       stablecoinVolumeAttoUsd,
       10n ** 18n,
       2,
     );
-    const filVolumeAttoUsd = BigInt(filVolume.volume_atto_usd);
+    const filVolumeAttoUsd = numericToBigInt(filVolume.volume_atto_usd);
     const filVolumeUsd = divideBigInt(filVolumeAttoUsd, 10n ** 18n, 2);
     const volumeAttoUsd = stablecoinVolumeAttoUsd + filVolumeAttoUsd;
     const volumeUsd = divideBigInt(volumeAttoUsd, 10n ** 18n, 2);
@@ -232,13 +234,13 @@ export class VolumeCalculationService {
       volumeAttoUsd,
       volumeUsd,
       pricingPeriods: pricingPeriodsResults.map((result) => {
-        const lotAttoUsd = BigInt(result.lot_atto_usd);
+        const lotAttoUsd = numericToBigInt(result.lot_atto_usd);
         const lotUsd = divideBigInt(lotAttoUsd, 10n ** 18n, 2);
-        const claimAttoFil = BigInt(result.claim_atto_fil);
+        const claimAttoFil = numericToBigInt(result.claim_atto_fil);
         const claimFil = divideBigInt(claimAttoFil, 10n ** 18n, 2);
-        const volumeAttoFil = BigInt(result.volume_atto_fil);
+        const volumeAttoFil = numericToBigInt(result.volume_atto_fil);
         const volumeFil = divideBigInt(volumeAttoFil, 10n ** 18n, 2);
-        const volumeAttoUsd = BigInt(result.volume_atto_usd);
+        const volumeAttoUsd = numericToBigInt(result.volume_atto_usd);
         const volumeUsd = divideBigInt(volumeAttoUsd, 10n ** 18n, 2);
         const impliedRate = BigNumber(result.implied_rate).toString();
 

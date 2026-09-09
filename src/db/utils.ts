@@ -16,16 +16,13 @@ export function epochToQuarterNumber({
 
   return eb.fn<string | bigint | number>('FLOOR', [
     eb(
-      eb.cast(
-        eb(
-          eb.cast(eb(epoch, '-', activationEpoch), 'numeric'),
-          '/',
-          eb.val(epochsPerQuarter),
-        ),
-        'bigint',
+      eb(
+        eb.cast(eb(epoch, '-', activationEpoch), 'numeric'),
+        '/',
+        eb.val(epochsPerQuarter),
       ),
       '+',
-      '1',
+      eb.val(1),
     ),
   ]);
 }
