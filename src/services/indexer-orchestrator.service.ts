@@ -81,7 +81,7 @@ export class IndexerOrchestratorService implements OnApplicationBootstrap {
 
     try {
       this.isRunning = true;
-      await this.excute();
+      await this.execute();
     } catch (error) {
       this.logger.error(error);
       this.logger.log(
@@ -102,7 +102,7 @@ export class IndexerOrchestratorService implements OnApplicationBootstrap {
     }
   }
 
-  public async excute() {
+  public async execute() {
     const sraAddress = this.configService.get('SERVICE_REWARDS_ACTOR_ADDRESS', {
       infer: true,
     });
