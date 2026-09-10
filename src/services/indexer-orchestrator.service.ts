@@ -158,15 +158,6 @@ export class IndexerOrchestratorService implements OnApplicationBootstrap {
 
     const auctionableTokens = await db
       .selectFrom('filecoin_pay_rail as r')
-      .innerJoin('filecoin_pay_payment as p', (join) => {
-        return join
-          .onRef('r.rail_id', '=', 'p.rail_id')
-          .onRef(
-            'r.filecoin_pay_contract_address',
-            '=',
-            'p.filecoin_pay_contract_address',
-          );
-      })
       .select('token')
       .where('r.token', '<>', zeroAddress)
       .groupBy('token')
