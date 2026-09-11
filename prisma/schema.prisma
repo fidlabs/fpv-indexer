@@ -59,14 +59,16 @@ model service_pair {
   payer                   String
   operator                String
   from_epoch              BigInt
+  from_log_index          Int
   to_epoch                BigInt?
+  to_log_index            Int?
   binding_epoch           BigInt
   binding_tx_hash         String
   unbinding_epoch         BigInt?
   unbinding_tx_hash       String?
   service_orchestrator    service_orchestrator @relation(fields: [service_orchestrator_id], references: [id], onUpdate: Cascade)
 
-  @@id([payer, operator, from_epoch])
+  @@id([payer, operator, from_epoch, from_log_index])
   @@index([service_orchestrator_id, payer, operator])
 }
 

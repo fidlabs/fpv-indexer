@@ -89,7 +89,9 @@ export type service_pair = {
     payer: string;
     operator: string;
     from_epoch: string;
+    from_log_index: number;
     to_epoch: string | null;
+    to_log_index: number | null;
     binding_epoch: string;
     binding_tx_hash: string;
     unbinding_epoch: string | null;

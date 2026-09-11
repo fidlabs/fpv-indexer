@@ -2,7 +2,7 @@ import ServiceRewardsActorABI from '@/abis/service-rewards-actor.abi';
 import { type TransactionContext } from '@/db/db';
 import { ServiceRewardsActorParameterType } from '@/db/enums';
 import { ARCHIVE_NODE_CLIENT, RECENT_NODE_CLIENT } from '@/lib/constants';
-import { maxBigInt } from '@/lib/utils';
+import { maxBigInt, numericToBigInt } from '@/lib/utils';
 import { ERC20TokenInfoService } from '@/services/erc-20-token-info.service';
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -18,10 +18,17 @@ import { AbstractIndexer, type GetLogsParameters } from './abstract.indexer';
 
 type EventType = (typeof events)[number];
 type Logs = LogForEvents<EventType>[];
+type OrchestratorRemovedLog = LogForEvents<typeof orchestratorRemovedEvent>;
 type BindingDeclaredLog = LogForEvents<typeof bindingDeclaredEvent>;
 type BindingReassignedLog = LogForEvents<typeof bindingReassignedEvent>;
+type BindingCanceledLog = LogForEvents<typeof bindingCanceledEvent>;
 type AdmittedListsUpdatedLog = LogForEvents<typeof admittedListUpdatedEvent>;
 type PricingParamsUpdatedLog = LogForEvents<typeof pricingParamsUpdatedEvent>;
+
+const orchestratorRemovedEvent = getAbiItem({
+  abi: ServiceRewardsActorABI,
+  name: 'OrchestratorRemoved',
+});
 
 const bindingDeclaredEvent = getAbiItem({
   abi: ServiceRewardsActorABI,
@@ -31,6 +38,11 @@ const bindingDeclaredEvent = getAbiItem({
 const bindingReassignedEvent = getAbiItem({
   abi: ServiceRewardsActorABI,
   name: 'BindingReassigned',
+});
+
+const bindingCanceledEvent = getAbiItem({
+  abi: ServiceRewardsActorABI,
+  name: 'BindingCanceled',
 });
 
 const admittedListUpdatedEvent = getAbiItem({
@@ -45,13 +57,14 @@ const pricingParamsUpdatedEvent = getAbiItem({
 
 const events = [
   getAbiItem({ abi: ServiceRewardsActorABI, name: 'OrchestratorAdmitted' }),
-  getAbiItem({ abi: ServiceRewardsActorABI, name: 'OrchestratorRemoved' }),
+  orchestratorRemovedEvent,
   getAbiItem({
     abi: ServiceRewardsActorABI,
     name: 'OrchestratorWalletReplaced',
   }),
   bindingDeclaredEvent,
   bindingReassignedEvent,
+  bindingCanceledEvent,
   getAbiItem({ abi: ServiceRewardsActorABI, name: 'BindingCanceled' }),
   admittedListUpdatedEvent,
   pricingParamsUpdatedEvent,
@@ -135,18 +148,7 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<EventType> {
           break;
 
         case 'OrchestratorRemoved':
-          // TODO: release orchestrator bindings, need to clarify explicit
-          // release rules
-          await tx
-            .updateTable('service_orchestrator')
-            .set({
-              removed: true,
-              removal_epoch: log.blockNumber.toString(),
-              removal_tx_hash: log.transactionHash.toLowerCase(),
-            })
-            .where('id', '=', log.args.orch.toLowerCase())
-            .executeTakeFirst();
-
+          await this.removeOrchestrator(tx, log);
           break;
 
         case 'OrchestratorWalletReplaced':
@@ -169,23 +171,7 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<EventType> {
           break;
 
         case 'BindingCanceled':
-          await tx
-            .updateTable('service_pair')
-            .set({
-              to_epoch: (log.blockNumber - 1n).toString(),
-              unbinding_epoch: log.blockNumber.toString(),
-              unbinding_tx_hash: log.transactionHash.toLowerCase(),
-            })
-            .where('operator', '=', log.args.operator.toLowerCase())
-            .where('payer', '=', log.args.payer.toLowerCase())
-            .where(
-              'service_orchestrator_id',
-              '=',
-              log.args.orchestrator.toLowerCase(),
-            )
-            .where('to_epoch', 'is', null)
-            .execute();
-
+          await this.cancelBinding(tx, log);
           break;
 
         case 'AdmittedListsUpdated':
@@ -212,6 +198,56 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<EventType> {
     }
   }
 
+  private async removeOrchestrator(
+    tx: TransactionContext,
+    log: OrchestratorRemovedLog,
+  ) {
+    const epoch = log.blockNumber.toString();
+    const logIndex = log.logIndex;
+    const serviceOrchestrator = log.args.orch.toLowerCase();
+    const txHash = log.transactionHash.toLowerCase();
+
+    // mark orchestrator as removed
+    await tx
+      .updateTable('service_orchestrator')
+      .set({
+        removed: true,
+        removal_epoch: epoch,
+        removal_tx_hash: txHash,
+      })
+      .where('id', '=', serviceOrchestrator)
+      .executeTakeFirst();
+
+    // delete binding of removed orchestrator which binding period didn't start
+    await tx
+      .deleteFrom('service_pair')
+      .where('service_orchestrator_id', '=', serviceOrchestrator)
+      .where('to_epoch', 'is', null)
+      .where((eb) => {
+        return eb.or([
+          eb('from_epoch', '>', epoch),
+          eb.and([
+            eb('from_epoch', '=', epoch),
+            eb('from_log_index', '>', logIndex),
+          ]),
+        ]);
+      })
+      .executeTakeFirst();
+
+    // release other bindings of removed orchestrator
+    await tx
+      .updateTable('service_pair')
+      .where('service_orchestrator_id', '=', log.args.orch.toLowerCase())
+      .where('to_epoch', 'is', null)
+      .set({
+        to_epoch: log.blockNumber.toString(),
+        to_log_index: logIndex,
+        unbinding_epoch: log.blockNumber.toString(),
+        unbinding_tx_hash: txHash,
+      })
+      .execute();
+  }
+
   private async createBinding(tx: TransactionContext, log: BindingDeclaredLog) {
     const pairTupleString = `(operator: ${log.args.operator}, payer: ${log.args.payer})`;
     const activationEpoch = this.configService.get('ACTIVATION_EPOCH', {
@@ -233,25 +269,39 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<EventType> {
 
     if (BigInt(activeBindingsCount.count) > 0n) {
       throw new TypeError(
-        `Pair ${pairTupleString} is actively bound to an orchestrator.`,
+        `Cannot bind pair ${pairTupleString}. Pair is already bound to another orchestrator.`,
       );
     }
 
-    const previousBindings = await tx
+    const previousBinding = await tx
       .selectFrom('service_pair')
       .where('operator', '=', log.args.operator.toLowerCase())
       .where('payer', '=', log.args.payer.toLowerCase())
       .where('to_epoch', 'is not', null)
-      .select((eb) => eb.fn.max('to_epoch').as('max_to_epoch'))
-      .executeTakeFirstOrThrow();
-    const maxToEpoch =
-      previousBindings.max_to_epoch !== null
-        ? BigInt(previousBindings.max_to_epoch)
+      .select(['to_epoch', 'to_log_index'])
+      .orderBy('to_epoch', 'desc')
+      .orderBy('to_log_index', (ob) => ob.desc().nullsLast())
+      .executeTakeFirst();
+    const previousReleaseEpoch =
+      previousBinding && previousBinding.to_epoch !== null
+        ? numericToBigInt(previousBinding.to_epoch)
+        : null;
+    const previousReleaseLogIndex =
+      previousBinding && previousBinding.to_log_index !== null
+        ? previousBinding.to_log_index
         : null;
 
-    if (maxToEpoch !== null && maxToEpoch >= log.blockNumber) {
+    const wasReleasedInFutureEpoch =
+      previousReleaseEpoch !== null && previousReleaseEpoch > log.blockNumber;
+    const wasReleasedInFutureLogIndex =
+      previousReleaseEpoch !== null &&
+      previousReleaseLogIndex !== null &&
+      previousReleaseEpoch === log.blockNumber &&
+      previousReleaseLogIndex >= log.logIndex;
+
+    if (wasReleasedInFutureEpoch || wasReleasedInFutureLogIndex) {
       throw new TypeError(
-        `Trying to bind pair ${pairTupleString} at epoch ${log.blockNumber} when it was released on epoch ${maxToEpoch}.`,
+        `Trying to bind pair ${pairTupleString} at epoch ${log.blockNumber}, log index ${log.logIndex} when it was released on epoch ${previousReleaseEpoch}, log index ${previousReleaseLogIndex}.`,
       );
     }
 
@@ -296,23 +346,26 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<EventType> {
 
     const cutoffStartEpoch = quarterEndEpoch - registrationCutoffEpochs + 1n;
 
-    const fromEpoch = (() => {
+    const [fromEpoch, fromLogIndex] = (() => {
       // registration falls into registration cutoff, binding applies from the
       // next quarter
       if (log.blockNumber >= cutoffStartEpoch) {
-        return quarterEndEpoch + 1n;
+        return [quarterEndEpoch + 1n, 0];
       }
 
       // no previous releases or released in previous quarter, binding applies
       // from the beggining of the quarter
       if (
-        maxToEpoch === null ||
-        this.getQuarterForEpoch(maxToEpoch) !== logQuarter
+        previousReleaseEpoch === null ||
+        this.getQuarterForEpoch(previousReleaseEpoch) !== logQuarter
       ) {
-        return quarterStartEpoch;
+        return [quarterStartEpoch, 0];
       }
 
-      return maxToEpoch + 1n;
+      return [
+        previousReleaseEpoch,
+        previousReleaseLogIndex ? previousReleaseLogIndex + 1 : 0,
+      ];
     })();
 
     await tx
@@ -322,6 +375,7 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<EventType> {
         payer: log.args.payer.toLowerCase(),
         operator: log.args.operator.toLowerCase(),
         from_epoch: fromEpoch.toString(),
+        from_log_index: fromLogIndex,
         binding_epoch: log.blockNumber.toString(),
         binding_tx_hash: log.transactionHash.toLowerCase(),
       })
@@ -343,16 +397,33 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<EventType> {
     const quarterStartEpoch =
       activationEpoch + epochsPerQuarter * (maxBigInt(logQuarter, 1n) - 1n);
 
-    // inherited pairs start from quarter start otherwise from epoch they were
-    // reassigned at
+    // inherited pairs start from quarter start otherwise from the epoch and
+    // next log index they were reassigned at
     const fromEpoch = log.args.inherit ? quarterStartEpoch : log.blockNumber;
-    const unboundToEpoch = fromEpoch - 1n;
+    const fromLogIndex = log.args.inherit ? 0 : log.logIndex + 1;
+    const unboundToEpoch = log.args.inherit ? fromEpoch - 1n : log.blockNumber;
+    const unboundToLogIndex = log.args.inherit
+      ? // since to_log_index was designed to be inclusive we need to create an
+        // unreachable max log number, here limit of the underlying DB field
+        2147483647
+      : log.logIndex;
+
+    // if binding got reassigned before it could start delete it to prevent
+    // primary key constraint violations
+    await tx
+      .deleteFrom('service_pair')
+      .where('payer', '=', log.args.payer.toLowerCase())
+      .where('operator', '=', log.args.operator.toLowerCase())
+      .where('to_epoch', 'is', null)
+      .where('from_epoch', '>', unboundToEpoch.toString())
+      .executeTakeFirst();
 
     // unbind active pairs
     await tx
       .updateTable('service_pair')
       .set({
         to_epoch: unboundToEpoch.toString(),
+        to_log_index: unboundToLogIndex,
         unbinding_epoch: log.blockNumber.toString(),
         unbinding_tx_hash: log.transactionHash.toLowerCase(),
       })
@@ -361,6 +432,7 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<EventType> {
       .where('to_epoch', 'is', null)
       .execute();
 
+    // bind to new orchestrator
     await tx
       .insertInto('service_pair')
       .values({
@@ -368,10 +440,52 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<EventType> {
         payer: log.args.payer.toLowerCase(),
         operator: log.args.operator.toLowerCase(),
         from_epoch: fromEpoch.toString(),
+        from_log_index: fromLogIndex,
         binding_epoch: log.blockNumber.toString(),
         binding_tx_hash: log.transactionHash.toLowerCase(),
       })
       .executeTakeFirst();
+  }
+
+  private async cancelBinding(tx: TransactionContext, log: BindingCanceledLog) {
+    const epoch = log.blockNumber.toString();
+    const logIndex = log.logIndex;
+    const orchestrator = log.args.orchestrator.toLowerCase();
+    const payer = log.args.payer.toLowerCase();
+    const operator = log.args.operator.toLowerCase();
+
+    // if binding got canceled before it binding period - remove it entirely...
+    await tx
+      .deleteFrom('service_pair')
+      .where('operator', '=', operator)
+      .where('payer', '=', payer)
+      .where('service_orchestrator_id', '=', orchestrator)
+      .where('to_epoch', 'is', null)
+      .where((eb) => {
+        return eb.or([
+          eb('from_epoch', '>', epoch),
+          eb.and([
+            eb('from_epoch', '=', epoch),
+            eb('from_log_index', '>', logIndex),
+          ]),
+        ]);
+      })
+      .executeTakeFirst();
+
+    // ...otherwise unbind it
+    await tx
+      .updateTable('service_pair')
+      .set({
+        to_epoch: epoch,
+        to_log_index: logIndex,
+        unbinding_epoch: epoch,
+        unbinding_tx_hash: log.transactionHash.toLowerCase(),
+      })
+      .where('operator', '=', operator)
+      .where('payer', '=', payer)
+      .where('service_orchestrator_id', '=', orchestrator)
+      .where('to_epoch', 'is', null)
+      .execute();
   }
 
   private async updatedAdmittedLists(

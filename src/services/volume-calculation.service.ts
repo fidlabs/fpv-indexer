@@ -30,6 +30,22 @@ export class VolumeCalculationService {
     const quarterParameters =
       await this.quartersService.getQuarterParameters(quarterNumberInt);
 
+    if (
+      quarterParameters.admittedFilecoinPayContractAddresses.length === 0 ||
+      quarterParameters.admittedStablecoins.length === 0
+    ) {
+      return {
+        quarter,
+        stablecoinVolumeAttoUsd: 0n,
+        stablecoinVolumeUsd: 0,
+        filVolumeAttoUsd: 0n,
+        filVolumeUsd: 0,
+        volumeAttoUsd: 0n,
+        volumeUsd: 0,
+        pricingPeriods: [],
+      };
+    }
+
     const stablecoinVolume = await db
       .selectFrom('filecoin_pay_payment as p')
       .innerJoin('filecoin_pay_rail as r', (join) => {
@@ -46,11 +62,23 @@ export class VolumeCalculationService {
           .on('sp.service_orchestrator_id', '=', serviceOrchestrator)
           .onRef('r.payer', '=', 'sp.payer')
           .onRef('r.operator', '=', 'sp.operator')
-          .onRef('p.settled_at_epoch', '>=', 'sp.from_epoch')
+          .on((eb) =>
+            eb.or([
+              eb('p.settled_at_epoch', '>', eb.ref('sp.from_epoch')),
+              eb.and([
+                eb('p.settled_at_epoch', '=', eb.ref('sp.from_epoch')),
+                eb('p.log_index', '>=', eb.ref('sp.from_log_index')),
+              ]),
+            ]),
+          )
           .on((eb) =>
             eb.or([
               eb('sp.to_epoch', 'is', null),
-              eb('p.settled_at_epoch', '<=', eb.ref('sp.to_epoch')),
+              eb('p.settled_at_epoch', '<', eb.ref('sp.to_epoch')),
+              eb.and([
+                eb('p.settled_at_epoch', '=', eb.ref('sp.to_epoch')),
+                eb('p.log_index', '<=', eb.ref('sp.to_log_index')),
+              ]),
             ]),
           );
       })
@@ -99,13 +127,25 @@ export class VolumeCalculationService {
                 .on('sp.service_orchestrator_id', '=', serviceOrchestrator)
                 .onRef('r.payer', '=', 'sp.payer')
                 .onRef('r.operator', '=', 'sp.operator')
-                .onRef('p.settled_at_epoch', '>=', 'sp.from_epoch')
-                .on((eb) =>
-                  eb.or([
+                .on((eb) => {
+                  return eb.or([
+                    eb('p.settled_at_epoch', '>', eb.ref('sp.from_epoch')),
+                    eb.and([
+                      eb('p.settled_at_epoch', '=', eb.ref('sp.from_epoch')),
+                      eb('p.log_index', '>=', eb.ref('sp.from_log_index')),
+                    ]),
+                  ]);
+                })
+                .on((eb) => {
+                  return eb.or([
                     eb('sp.to_epoch', 'is', null),
-                    eb('p.settled_at_epoch', '<=', eb.ref('sp.to_epoch')),
-                  ]),
-                );
+                    eb('p.settled_at_epoch', '<', eb.ref('sp.to_epoch')),
+                    eb.and([
+                      eb('p.settled_at_epoch', '=', eb.ref('sp.to_epoch')),
+                      eb('p.log_index', '<=', eb.ref('sp.to_log_index')),
+                    ]),
+                  ]);
+                });
             })
             .select('p.total_amount')
             .where(

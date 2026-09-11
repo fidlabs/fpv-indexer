@@ -933,12 +933,6 @@ describe('FIP-0118 adherence test', () => {
     });
   });
 
-  // TODO: implement when binding reassingment rules get clarified
-  // Include settlements where from_epoch <= settlement_epoch <= to_epoch
-  // Exclude settlements before from_epoch
-  // Exclude settlements after to_epoch (if not null)
-  it.todo('Respects binding periods in volume calculation');
-
   // Tests:
   // - settlements made on unbound pairs do not count towards quarterly volume
   it('Excludes unbound settlements and one time payments', async () => {
@@ -1338,11 +1332,442 @@ describe('FIP-0118 adherence test', () => {
     });
   });
 
-  it.todo('Attributes volume properly after orchestrator removal');
+  // Tests:
+  // - orchestrator bindings are released on orchestrator removal
+  // - another orchestrator can bind released pairs
+  // - same epoch settlement/release/binding is ordered correctly
+  it('Attributes volume properly after orchestrator removal', async () => {
+    const q1 = app.get(QuartersService).getQuarterByIndex(1);
 
-  it.todo('Attributes volume properly after binding reassignment');
+    testFilecoinClient.resetWithLogs([
+      pricingParamsUpdatedLog({
+        address: serviceRewardsActor,
+        blockNumber: 1n,
+        logIndex: 0,
+        minLotFloor: 0n,
+        minLotAlphaDen: 1n,
+        minLotAlphaNum: 0n,
+        priceBand: 10000n,
+        registrationCutoff: 5n,
+      }),
+      admittedListsUpdatedLog({
+        address: serviceRewardsActor,
+        blockNumber: 1n,
+        logIndex: 1,
+        filecoinPayContracts: [filecoinPayContractA],
+        stablecoins: [usdfcToken.address],
+      }),
+      orchestratorAdmittedLog({
+        address: serviceRewardsActor,
+        blockNumber: 1n,
+        logIndex: 2,
+        orchestrator: orchestratorA,
+        wallet: orchestratorA,
+      }),
+      orchestratorAdmittedLog({
+        address: serviceRewardsActor,
+        blockNumber: 1n,
+        logIndex: 3,
+        orchestrator: orchestratorB,
+        wallet: orchestratorB,
+      }),
+      railCreatedLog({
+        address: filecoinPayContractA,
+        blockNumber: 1n,
+        logIndex: 4,
+        railId: 1n,
+        token: usdfcToken.address,
+        payee: zeroAddress,
+        payer: payerA,
+        operator: operatorA,
+        validator: zeroAddress,
+      }),
+      bindingDeclaredLog({
+        address: serviceRewardsActor,
+        blockNumber: 1n,
+        logIndex: 5,
+        orchestrator: orchestratorA,
+        operator: operatorA,
+        payer: payerA,
+      }),
 
-  it.todo('Attributes volume properly after binding cancelation');
+      // Settlement before A removal, should count towards A
+      railSettledLog({
+        address: filecoinPayContractA,
+        blockNumber: q1.startEpoch + 1n,
+        logIndex: 0,
+        railId: 1n,
+        totalSettledAmount: usdfcToken.formatNumericValue(1n),
+        totalNetPayeeAmount: usdfcToken.formatNumericValue(1n),
+        operatorCommission: 0n,
+        networkFee: 0n,
+      }),
+
+      // A gets removed same epoch, binding should be released
+      orchestratorRemovedLog({
+        address: serviceRewardsActor,
+        blockNumber: q1.startEpoch + 1n,
+        logIndex: 1,
+        orchestrator: orchestratorA,
+      }),
+      // Same epoch released settlement
+      railSettledLog({
+        address: filecoinPayContractA,
+        blockNumber: q1.startEpoch + 1n,
+        logIndex: 2,
+        railId: 1n,
+        totalSettledAmount: usdfcToken.formatNumericValue(10n),
+        totalNetPayeeAmount: usdfcToken.formatNumericValue(10n),
+        operatorCommission: 0n,
+        networkFee: 0n,
+      }),
+
+      // B bind released pair, previous settlement now counts towards B's volume
+      bindingDeclaredLog({
+        address: serviceRewardsActor,
+        blockNumber: q1.startEpoch + 2n,
+        logIndex: 0,
+        orchestrator: orchestratorB,
+        operator: operatorA,
+        payer: payerA,
+      }),
+
+      // Another settlement when B already binds the pair
+      railSettledLog({
+        address: filecoinPayContractA,
+        blockNumber: q1.startEpoch + 3n,
+        logIndex: 0,
+        railId: 1n,
+        totalSettledAmount: usdfcToken.formatNumericValue(100n),
+        totalNetPayeeAmount: usdfcToken.formatNumericValue(100n),
+        operatorCommission: 0n,
+        networkFee: 0n,
+      }),
+    ]);
+
+    testFilecoinClient.forwardTo(q1.endEpoch + 1n);
+    await app.get(IndexerOrchestratorService).execute();
+
+    const responseA = await request(app.getHttpServer())
+      .get(`/volume/1/${orchestratorA}`)
+      .expect(200);
+
+    const responseB = await request(app.getHttpServer())
+      .get(`/volume/1/${orchestratorB}`)
+      .expect(200);
+
+    expect(responseA.body).toMatchObject({
+      stablecoinVolumeAttoUsd: usdfcToken.formatNumericValue(1n).toString(),
+      filVolumeAttoUsd: '0',
+      volumeAttoUsd: usdfcToken.formatNumericValue(1n).toString(),
+    });
+
+    expect(responseB.body).toMatchObject({
+      stablecoinVolumeAttoUsd: usdfcToken.formatNumericValue(110n).toString(),
+      filVolumeAttoUsd: '0',
+      volumeAttoUsd: usdfcToken.formatNumericValue(110n).toString(),
+    });
+  });
+
+  // Tests:
+  // - orchestrator bindings are released on reassigment
+  // - volume is correctly inherited if a flag is set
+  // - another orchestrator can bind released pairs
+  // - same epoch settlement/reassignment is ordered correctly
+  it('Attributes volume properly after binding reassignment', async () => {
+    const q1 = app.get(QuartersService).getQuarterByIndex(1);
+
+    testFilecoinClient.resetWithLogs([
+      pricingParamsUpdatedLog({
+        address: serviceRewardsActor,
+        blockNumber: 1n,
+        logIndex: 0,
+        minLotFloor: 0n,
+        minLotAlphaDen: 1n,
+        minLotAlphaNum: 0n,
+        priceBand: 10000n,
+        registrationCutoff: 5n,
+      }),
+      admittedListsUpdatedLog({
+        address: serviceRewardsActor,
+        blockNumber: 1n,
+        logIndex: 1,
+        filecoinPayContracts: [filecoinPayContractA],
+        stablecoins: [usdfcToken.address],
+      }),
+      orchestratorAdmittedLog({
+        address: serviceRewardsActor,
+        blockNumber: 1n,
+        logIndex: 2,
+        orchestrator: orchestratorA,
+        wallet: orchestratorA,
+      }),
+      orchestratorAdmittedLog({
+        address: serviceRewardsActor,
+        blockNumber: 1n,
+        logIndex: 3,
+        orchestrator: orchestratorB,
+        wallet: orchestratorB,
+      }),
+      railCreatedLog({
+        address: filecoinPayContractA,
+        blockNumber: 1n,
+        logIndex: 4,
+        railId: 1n,
+        token: usdfcToken.address,
+        payee: zeroAddress,
+        payer: payerA,
+        operator: operatorA,
+        validator: zeroAddress,
+      }),
+      railCreatedLog({
+        address: filecoinPayContractA,
+        blockNumber: 1n,
+        logIndex: 5,
+        railId: 2n,
+        token: usdfcToken.address,
+        payee: zeroAddress,
+        payer: payerB,
+        operator: operatorA,
+        validator: zeroAddress,
+      }),
+
+      // Orch A binds both pairs
+      bindingDeclaredLog({
+        address: serviceRewardsActor,
+        blockNumber: q1.startEpoch,
+        logIndex: 0,
+        orchestrator: orchestratorA,
+        operator: operatorA,
+        payer: payerA,
+      }),
+      bindingDeclaredLog({
+        address: serviceRewardsActor,
+        blockNumber: q1.startEpoch,
+        logIndex: 1,
+        orchestrator: orchestratorA,
+        operator: operatorA,
+        payer: payerB,
+      }),
+
+      // Settlements on both pairs when bound to A
+      railSettledLog({
+        address: filecoinPayContractA,
+        blockNumber: q1.startEpoch + 1n,
+        logIndex: 0,
+        railId: 1n,
+        totalSettledAmount: usdfcToken.formatNumericValue(1n),
+        totalNetPayeeAmount: usdfcToken.formatNumericValue(1n),
+        operatorCommission: 0n,
+        networkFee: 0n,
+      }),
+      railSettledLog({
+        address: filecoinPayContractA,
+        blockNumber: q1.startEpoch + 1n,
+        logIndex: 1,
+        railId: 2n,
+        totalSettledAmount: usdfcToken.formatNumericValue(10n),
+        totalNetPayeeAmount: usdfcToken.formatNumericValue(10n),
+        operatorCommission: 0n,
+        networkFee: 0n,
+      }),
+
+      // Reassigments on the same epoch, payer B volume gets inherited
+      bindingReassignedLog({
+        address: serviceRewardsActor,
+        blockNumber: q1.startEpoch + 1n,
+        logIndex: 2,
+        orchestrator: orchestratorB,
+        operator: operatorA,
+        payer: payerA,
+        inherit: false,
+      }),
+      bindingReassignedLog({
+        address: serviceRewardsActor,
+        blockNumber: q1.startEpoch + 1n,
+        logIndex: 3,
+        orchestrator: orchestratorB,
+        operator: operatorA,
+        payer: payerB,
+        inherit: true,
+      }),
+
+      // Same epoch settlements after reassignemnt to B
+      railSettledLog({
+        address: filecoinPayContractA,
+        blockNumber: q1.startEpoch + 1n,
+        logIndex: 4,
+        railId: 1n,
+        totalSettledAmount: usdfcToken.formatNumericValue(100n),
+        totalNetPayeeAmount: usdfcToken.formatNumericValue(100n),
+        operatorCommission: 0n,
+        networkFee: 0n,
+      }),
+      railSettledLog({
+        address: filecoinPayContractA,
+        blockNumber: q1.startEpoch + 1n,
+        logIndex: 5,
+        railId: 2n,
+        totalSettledAmount: usdfcToken.formatNumericValue(1000n),
+        totalNetPayeeAmount: usdfcToken.formatNumericValue(1000n),
+        operatorCommission: 0n,
+        networkFee: 0n,
+      }),
+    ]);
+
+    testFilecoinClient.forwardTo(q1.endEpoch + 1n);
+
+    await app.get(IndexerOrchestratorService).execute();
+
+    const responseA = await request(app.getHttpServer())
+      .get(`/volume/1/${orchestratorA}`)
+      .expect(200);
+    const responseB = await request(app.getHttpServer())
+      .get(`/volume/1/${orchestratorB}`)
+      .expect(200);
+
+    expect(responseA.body).toMatchObject({
+      stablecoinVolumeAttoUsd: usdfcToken.formatNumericValue(1n).toString(),
+      volumeAttoUsd: usdfcToken.formatNumericValue(1n).toString(),
+    });
+    expect(responseB.body).toMatchObject({
+      stablecoinVolumeAttoUsd: usdfcToken.formatNumericValue(1110n).toString(),
+      volumeAttoUsd: usdfcToken.formatNumericValue(1110n).toString(),
+    });
+  });
+
+  // Tests:
+  // - orchestrator bindings are released on cancellation
+  // - another orchestrator can bind released pairs
+  // - same epoch settlement/cancellation is ordered correctly
+  it('Attributes volume properly after binding cancellation', async () => {
+    const q1 = app.get(QuartersService).getQuarterByIndex(1);
+
+    testFilecoinClient.resetWithLogs([
+      pricingParamsUpdatedLog({
+        address: serviceRewardsActor,
+        blockNumber: 1n,
+        logIndex: 0,
+        minLotFloor: 0n,
+        minLotAlphaDen: 1n,
+        minLotAlphaNum: 0n,
+        priceBand: 10000n,
+        registrationCutoff: 5n,
+      }),
+      admittedListsUpdatedLog({
+        address: serviceRewardsActor,
+        blockNumber: 1n,
+        logIndex: 1,
+        filecoinPayContracts: [filecoinPayContractA],
+        stablecoins: [usdfcToken.address],
+      }),
+      orchestratorAdmittedLog({
+        address: serviceRewardsActor,
+        blockNumber: 1n,
+        logIndex: 2,
+        orchestrator: orchestratorA,
+        wallet: orchestratorA,
+      }),
+      orchestratorAdmittedLog({
+        address: serviceRewardsActor,
+        blockNumber: 1n,
+        logIndex: 3,
+        orchestrator: orchestratorB,
+        wallet: orchestratorB,
+      }),
+      railCreatedLog({
+        address: filecoinPayContractA,
+        blockNumber: 1n,
+        logIndex: 4,
+        railId: 1n,
+        token: usdfcToken.address,
+        payee: zeroAddress,
+        payer: payerA,
+        operator: operatorA,
+        validator: zeroAddress,
+      }),
+      bindingDeclaredLog({
+        address: serviceRewardsActor,
+        blockNumber: q1.startEpoch,
+        logIndex: 0,
+        orchestrator: orchestratorA,
+        operator: operatorA,
+        payer: payerA,
+      }),
+
+      // Settlement before cancellation attributed to A
+      railSettledLog({
+        address: filecoinPayContractA,
+        blockNumber: q1.startEpoch + 1n,
+        logIndex: 0,
+        railId: 1n,
+        totalSettledAmount: usdfcToken.formatNumericValue(1n),
+        totalNetPayeeAmount: usdfcToken.formatNumericValue(1n),
+        operatorCommission: 0n,
+        networkFee: 0n,
+      }),
+      bindingCanceledLog({
+        address: serviceRewardsActor,
+        blockNumber: q1.startEpoch + 1n,
+        logIndex: 1,
+        orchestrator: orchestratorA,
+        operator: operatorA,
+        payer: payerA,
+      }),
+      // Unbound settlement
+      railSettledLog({
+        address: filecoinPayContractA,
+        blockNumber: q1.startEpoch + 1n,
+        logIndex: 2,
+        railId: 1n,
+        totalSettledAmount: usdfcToken.formatNumericValue(10n),
+        totalNetPayeeAmount: usdfcToken.formatNumericValue(10n),
+        operatorCommission: 0n,
+        networkFee: 0n,
+      }),
+      // B binds released pair
+      bindingDeclaredLog({
+        address: serviceRewardsActor,
+        blockNumber: q1.startEpoch + 1n,
+        logIndex: 3,
+        orchestrator: orchestratorB,
+        operator: operatorA,
+        payer: payerA,
+      }),
+      // Settlement bound to B
+      railSettledLog({
+        address: filecoinPayContractA,
+        blockNumber: q1.startEpoch + 1n,
+        logIndex: 4,
+        railId: 1n,
+        totalSettledAmount: usdfcToken.formatNumericValue(100n),
+        totalNetPayeeAmount: usdfcToken.formatNumericValue(100n),
+        operatorCommission: 0n,
+        networkFee: 0n,
+      }),
+    ]);
+
+    testFilecoinClient.forwardTo(q1.endEpoch + 1n);
+    await app.get(IndexerOrchestratorService).execute();
+
+    const responseA = await request(app.getHttpServer())
+      .get(`/volume/1/${orchestratorA}`)
+      .expect(200);
+
+    const responseB = await request(app.getHttpServer())
+      .get(`/volume/1/${orchestratorB}`)
+      .expect(200);
+
+    expect(responseA.body).toMatchObject({
+      stablecoinVolumeAttoUsd: usdfcToken.formatNumericValue(1n).toString(),
+      volumeAttoUsd: usdfcToken.formatNumericValue(1n).toString(),
+    });
+
+    expect(responseB.body).toMatchObject({
+      stablecoinVolumeAttoUsd: usdfcToken.formatNumericValue(110n).toString(),
+      volumeAttoUsd: usdfcToken.formatNumericValue(110n).toString(),
+    });
+  });
 
   // Tests:
   // - settlement and print on same epoch must be ordered by log index
@@ -2728,6 +3153,62 @@ function orchestratorAdmittedLog({
   return {
     eventName: 'OrchestratorAdmitted',
     args: { orch: orchestrator, wallet },
+    logIndex: 0,
+    transactionHash: txHash ?? nextTxHash(),
+    ...logInputs,
+  };
+}
+
+function orchestratorRemovedLog({
+  orchestrator,
+  txHash,
+  ...logInputs
+}: LogInputs & { orchestrator: Address }) {
+  return {
+    eventName: 'OrchestratorRemoved',
+    args: { orch: orchestrator },
+    logIndex: 0,
+    transactionHash: txHash ?? nextTxHash(),
+    ...logInputs,
+  };
+}
+
+function bindingReassignedLog({
+  payer,
+  operator,
+  orchestrator,
+  inherit,
+  txHash,
+  ...logInputs
+}: LogInputs & {
+  payer: Address;
+  operator: Address;
+  orchestrator: Address;
+  inherit: boolean;
+}) {
+  return {
+    eventName: 'BindingReassigned',
+    args: { payer, operator, orchestrator, inherit },
+    logIndex: 0,
+    transactionHash: txHash ?? nextTxHash(),
+    ...logInputs,
+  };
+}
+
+function bindingCanceledLog({
+  payer,
+  operator,
+  orchestrator,
+  txHash,
+  ...logInputs
+}: LogInputs & {
+  payer: Address;
+  operator: Address;
+  orchestrator: Address;
+}) {
+  return {
+    eventName: 'BindingCanceled',
+    args: { payer, operator, orchestrator },
     logIndex: 0,
     transactionHash: txHash ?? nextTxHash(),
     ...logInputs,
