@@ -364,7 +364,7 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<EventType> {
 
       return [
         previousReleaseEpoch,
-        previousReleaseLogIndex ? previousReleaseLogIndex + 1 : 0,
+        previousReleaseLogIndex !== null ? previousReleaseLogIndex + 1 : 0,
       ];
     })();
 
@@ -415,7 +415,15 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<EventType> {
       .where('payer', '=', log.args.payer.toLowerCase())
       .where('operator', '=', log.args.operator.toLowerCase())
       .where('to_epoch', 'is', null)
-      .where('from_epoch', '>', unboundToEpoch.toString())
+      .where((eb) => {
+        return eb.or([
+          eb('from_epoch', '>', unboundToEpoch.toString()),
+          eb.and([
+            eb('from_epoch', '=', unboundToEpoch.toString()),
+            eb('from_log_index', '>', unboundToLogIndex),
+          ]),
+        ]);
+      })
       .executeTakeFirst();
 
     // unbind active pairs
