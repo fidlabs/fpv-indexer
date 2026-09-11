@@ -200,15 +200,6 @@ export class IndexerOrchestratorService implements OnApplicationBootstrap {
           .execute(),
         db
           .selectFrom('filecoin_pay_rail as r')
-          .innerJoin('filecoin_pay_payment as p', (join) => {
-            return join
-              .onRef('r.rail_id', '=', 'p.rail_id')
-              .onRef(
-                'r.filecoin_pay_contract_address',
-                '=',
-                'p.filecoin_pay_contract_address',
-              );
-          })
           .select('token as token_address')
           .where('r.token', '<>', zeroAddress)
           .groupBy('token')
@@ -246,6 +237,8 @@ export class IndexerOrchestratorService implements OnApplicationBootstrap {
       version: packageSemver ? packageSemver.toString() : 'N/A',
       isRunning: this.isRunning,
       indexedUpTo: minBigInt(
+        // TODO: filter out not longer indexed contract due to removal from
+        // admitted list
         ...(contractsStates.map((i) => i.indexedUpTo) as [bigint, ...bigint[]]),
       ),
       contracts: contractsStates,

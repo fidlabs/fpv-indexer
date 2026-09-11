@@ -10,6 +10,7 @@ import type {
   IndexerRunParameters,
   LogForEvents,
 } from '@/lib/types';
+import { compareNullableNumber } from '@/lib/utils';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { AbiEvent, Address, Log } from 'viem';
@@ -145,33 +146,21 @@ export abstract class AbstractIndexer<EventType extends AbiEvent> {
 
   private sortLogs<T extends Log>(logs: T[]): T[] {
     return [...logs].sort((a, b) => {
-      const isSameBlockNUmber =
-        (a.blockNumber === null && b.blockNumber === null) ||
-        (a.blockNumber !== null &&
-          b.blockNumber !== null &&
-          a.blockNumber === b.blockNumber);
+      const blockOrder = compareNullableNumber(
+        a.blockNumber,
+        b.blockNumber,
+        'asc',
+      );
+      if (blockOrder !== 0) return blockOrder;
 
-      if (isSameBlockNUmber) {
-        if (a.logIndex === null) {
-          return -1;
-        }
+      const transactionOrder = compareNullableNumber(
+        a.transactionIndex,
+        b.transactionIndex,
+        'asc',
+      );
+      if (transactionOrder !== 0) return transactionOrder;
 
-        if (b.logIndex === null) {
-          return 1;
-        }
-
-        return a.logIndex - b.logIndex;
-      }
-
-      if (a.blockNumber === null) {
-        return -1;
-      }
-
-      if (b.blockNumber === null) {
-        return 1;
-      }
-
-      return a.blockNumber > b.blockNumber ? 1 : -1;
+      return compareNullableNumber(a.logIndex, b.logIndex, 'asc');
     });
   }
 }
