@@ -3118,13 +3118,106 @@ describe('FIP-0118 adherence test', () => {
     });
   });
 
+  // Tests:
+  // - quarterly volume postings are collected
+  // - corrections are respected
+  it('Collects orchestrators quarterly volume', async () => {
+    const indexerOrchestrator = app.get(IndexerOrchestratorService);
+    const q2 = app.get(QuartersService).getQuarterByIndex(2);
+
+    testFilecoinClient.resetWithLogs([
+      orchestratorAdmittedLog({
+        address: serviceRewardsActor,
+        blockNumber: 1n,
+        logIndex: 3,
+        orchestrator: orchestratorA,
+        wallet: orchestratorA,
+      }),
+      orchestratorAdmittedLog({
+        address: serviceRewardsActor,
+        blockNumber: 1n,
+        logIndex: 3,
+        orchestrator: orchestratorB,
+        wallet: orchestratorB,
+      }),
+
+      volumeLog({
+        address: serviceRewardsActor,
+        blockNumber: q2.startEpoch,
+        logIndex: 0,
+        orchestrator: orchestratorA,
+        volume: filToken.formatNumericValue(1),
+        q: 1n,
+        isCorrection: false,
+      }),
+      volumeLog({
+        address: serviceRewardsActor,
+        blockNumber: q2.startEpoch,
+        logIndex: 1,
+        orchestrator: orchestratorB,
+        volume: filToken.formatNumericValue(10),
+        q: 1n,
+        isCorrection: false,
+      }),
+      volumeLog({
+        address: serviceRewardsActor,
+        blockNumber: q2.startEpoch,
+        logIndex: 2,
+        orchestrator: orchestratorA,
+        volume: 0n,
+        q: 1n,
+        isCorrection: true,
+      }),
+    ]);
+
+    testFilecoinClient.forwardTo(q2.endEpoch + 1n);
+    await indexerOrchestrator.execute();
+
+    // Validation
+    const responseA = await request(app.getHttpServer())
+      .get(`/quarters/1/postings/${orchestratorA}`)
+      .expect(200);
+
+    const responseB = await request(app.getHttpServer())
+      .get(`/quarters/1/postings/${orchestratorB}`)
+      .expect(200);
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const postingsA = responseA.body.postings as unknown[];
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const postingsB = responseB.body.postings as unknown[];
+
+    expect(responseA.body).toMatchObject({
+      serviceOrchestrator: orchestratorA.toLowerCase(),
+      quarterNum: 1,
+      volumeAttoUsd: null,
+      corrected: true,
+      postingEpoch: null,
+      postingTxHash: null,
+    });
+
+    expect(postingsA.length).toBe(2);
+
+    expect(responseB.body).toMatchObject({
+      serviceOrchestrator: orchestratorB.toLowerCase(),
+      quarterNum: 1,
+      volumeAttoUsd: filToken.formatNumericValue(10).toString(),
+      corrected: false,
+      postingEpoch: q2.startEpoch.toString(),
+    });
+
+    expect(postingsB.length).toBe(1);
+  });
+
   async function resetDatabase() {
     const query = sql`
       TRUNCATE TABLE
         filecoin_pay_payment, filecoin_pay_fee_auction, filecoin_pay_rail,
         service_pair, service_orchestrator, whitelisted_token,
         filecoin_pay_contract, service_rewards_actor_parameter,
-        quarter_bound_volume, application_config, indexer_state
+        quarter_bound_volume, application_config, indexer_state,
+        service_orchestrator_quarterly_volume
       CASCADE;
 
       REFRESH MATERIALIZED VIEW CONCURRENTLY qualified_price_periods_mv;
@@ -3391,6 +3484,32 @@ function transferLog({
       from,
       to,
       value,
+    },
+    logIndex: 0,
+    transactionHash: txHash ?? nextTxHash(),
+    ...logInputs,
+  };
+}
+
+function volumeLog({
+  orchestrator,
+  q,
+  volume,
+  isCorrection,
+  txHash,
+  ...logInputs
+}: LogInputs & {
+  orchestrator: Address;
+  q: bigint;
+  volume: bigint;
+  isCorrection: boolean;
+}) {
+  return {
+    eventName: isCorrection ? 'VolumeCorrected' : 'VolumePosted',
+    args: {
+      orchestrator,
+      q,
+      volume,
     },
     logIndex: 0,
     transactionHash: txHash ?? nextTxHash(),

@@ -3,7 +3,10 @@ import { ServiceRewardsActorParameterType } from '@/db/enums';
 import { epochToQuarterNumber } from '@/db/utils';
 import { QuarterParametersDto } from '@/dto/quarter-parameters.dto';
 import { QuarterDto } from '@/dto/quarter.dto';
+import { ServiceOrchestratorQuarterlyVolumeParametersDto } from '@/dto/service-orchestrator-quarterly-volume-parameters.dto';
+import { ServiceOrchestratorQuarterlyVolumePostingDto } from '@/dto/service-orchestrator-quarterly-volume-posting.dto';
 import { RECENT_NODE_CLIENT } from '@/lib/constants';
+import { QuarterNumber } from '@/lib/quarter-number';
 import type { ConfigShape, FilecoinPublicClient } from '@/lib/types';
 import { divideBigInt, numericToBigInt } from '@/lib/utils';
 import { Inject, Injectable } from '@nestjs/common';
@@ -71,6 +74,22 @@ export class QuartersService {
     return [...Array(quartersCount)].map((_, index) =>
       this.getQuarterByIndex(index + 1),
     );
+  }
+
+  public async getCurrentQuarterNum(): Promise<number | null> {
+    const currentBlockNumber = await this.recentNodeClient.getBlockNumber();
+    const activationEpoch = this.configService.get('ACTIVATION_EPOCH', {
+      infer: true,
+    });
+    const epochsPerQuarter = this.configService.get('EPOCHS_PER_QUARTER', {
+      infer: true,
+    });
+
+    const quarterNum = Math.ceil(
+      divideBigInt(currentBlockNumber - activationEpoch, epochsPerQuarter),
+    );
+
+    return quarterNum < 1 ? null : quarterNum;
   }
 
   public async getQuarterParameters(
@@ -390,6 +409,79 @@ export class QuartersService {
         (c) => c.contract_address as Address,
       ),
     };
+  }
+
+  public async getServiceOrchestratorsQuarterlyVolumePostings({
+    serviceOrchestrator,
+    quarterNumber,
+  }: ServiceOrchestratorQuarterlyVolumeParametersDto): Promise<ServiceOrchestratorQuarterlyVolumePostingDto> {
+    type Posting =
+      ServiceOrchestratorQuarterlyVolumePostingDto['postings'][number];
+
+    const quarterNumInt = QuarterNumber.from(quarterNumber).toNumber();
+
+    const results = await db
+      .selectFrom('service_orchestrator as o')
+      .leftJoin(
+        'service_orchestrator_quarterly_volume as v',
+        'o.id',
+        'v.service_orchestrator_id',
+      )
+      .select([
+        'o.id as service_orchestrator_id',
+        'v.volume_atto_usd',
+        'v.is_correction',
+        'v.posting_epoch',
+        'v.posting_tx_hash',
+      ])
+      .where('quarter_num', '=', quarterNumInt)
+      .where('o.id', '=', serviceOrchestrator.toLowerCase())
+      .orderBy('posting_epoch', 'desc')
+      .orderBy('posting_log_index', 'desc')
+      .execute();
+
+    const postings = results.reduce<Posting[]>((results, result) => {
+      if (
+        result.volume_atto_usd === null ||
+        result.is_correction === null ||
+        result.posting_epoch === null ||
+        result.posting_tx_hash === null
+      ) {
+        return results;
+      }
+
+      const nextPosting: Posting = {
+        serviceOrchestrator,
+        volumeAttoUsd: numericToBigInt(result.volume_atto_usd),
+        correction: result.is_correction,
+        postingEpoch: numericToBigInt(result.posting_epoch),
+        postingTxHash: result.posting_tx_hash,
+      };
+
+      return [...results, nextPosting];
+    }, []);
+
+    const lastPosting = postings[0];
+    const corrected = postings.some((posting) => posting.correction);
+
+    return {
+      serviceOrchestrator,
+      quarterNum: quarterNumInt,
+      volumeAttoUsd:
+        !lastPosting || lastPosting.volumeAttoUsd === 0n
+          ? null
+          : lastPosting.volumeAttoUsd,
+      corrected,
+      postingEpoch:
+        !lastPosting || lastPosting.volumeAttoUsd === 0n
+          ? null
+          : lastPosting.postingEpoch,
+      postingTxHash:
+        !lastPosting || lastPosting.volumeAttoUsd === 0n
+          ? null
+          : lastPosting.postingTxHash,
+      postings,
+    } satisfies ServiceOrchestratorQuarterlyVolumePostingDto;
   }
 
   private createMissingParameterError(

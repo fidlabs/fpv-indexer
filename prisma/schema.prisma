@@ -72,6 +72,18 @@ model service_pair {
   @@index([service_orchestrator_id, payer, operator])
 }
 
+model service_orchestrator_quarterly_volume {
+  service_orchestrator_id String
+  quarter_num             Int
+  volume_atto_usd         Decimal
+  is_correction           Boolean
+  posting_epoch           BigInt
+  posting_log_index       Int
+  posting_tx_hash         String
+
+  @@id([service_orchestrator_id, quarter_num, posting_epoch, posting_log_index])
+}
+
 model quarter_bound_volume {
   quarter_num     Int     @id
   volume_atto_usd Decimal

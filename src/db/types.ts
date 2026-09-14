@@ -84,6 +84,15 @@ export type service_orchestrator = {
     removal_epoch: string | null;
     removal_tx_hash: string | null;
 };
+export type service_orchestrator_quarterly_volume = {
+    service_orchestrator_id: string;
+    quarter_num: number;
+    volume_atto_usd: string;
+    is_correction: boolean;
+    posting_epoch: string;
+    posting_log_index: number;
+    posting_tx_hash: string;
+};
 export type service_pair = {
     service_orchestrator_id: string;
     payer: string;
@@ -125,6 +134,7 @@ export type DB = {
     qualified_price_periods_mv: qualified_price_periods_mv;
     quarter_bound_volume: quarter_bound_volume;
     service_orchestrator: service_orchestrator;
+    service_orchestrator_quarterly_volume: service_orchestrator_quarterly_volume;
     service_pair: service_pair;
     service_rewards_actor_parameter: service_rewards_actor_parameter;
     whitelisted_token: whitelisted_token;

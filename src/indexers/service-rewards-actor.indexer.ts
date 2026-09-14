@@ -68,6 +68,8 @@ const events = [
   getAbiItem({ abi: ServiceRewardsActorABI, name: 'BindingCanceled' }),
   admittedListUpdatedEvent,
   pricingParamsUpdatedEvent,
+  getAbiItem({ abi: ServiceRewardsActorABI, name: 'VolumePosted' }),
+  getAbiItem({ abi: ServiceRewardsActorABI, name: 'VolumeCorrected' }),
   getAbiItem({ abi: ServiceRewardsActorABI, name: 'SharesSubmitted' }),
 ] as const satisfies AbiEvent[];
 
@@ -180,6 +182,23 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<EventType> {
 
         case 'PricingParamsUpdated':
           await this.updatePricingParams(tx, log);
+          break;
+
+        case 'VolumePosted':
+        case 'VolumeCorrected':
+          await tx
+            .insertInto('service_orchestrator_quarterly_volume')
+            .values({
+              service_orchestrator_id: log.args.orchestrator.toLowerCase(),
+              quarter_num: Number(log.args.q),
+              volume_atto_usd: log.args.volume.toString(),
+              is_correction: log.eventName === 'VolumeCorrected',
+              posting_epoch: log.blockNumber.toString(),
+              posting_log_index: log.logIndex,
+              posting_tx_hash: log.transactionHash.toString(),
+            })
+            .executeTakeFirst();
+
           break;
 
         case 'SharesSubmitted':

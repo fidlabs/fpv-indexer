@@ -9,6 +9,8 @@ const ServiceRewardsActorABI = parseAbi([
   'event BindingCanceled(address indexed payer, address indexed operator, address indexed orchestrator)',
   'event AdmittedListsUpdated(address[] stablecoins, address[] filecoinPayContracts)',
   'event PricingParamsUpdated(uint256 minLotFloor, uint256 minLotAlphaNum, uint256 minLotAlphaDen, uint256 priceBand, uint256 registrationCutoff)',
+  'event VolumePosted(uint64 indexed q, address indexed orchestrator, uint256 volume)',
+  'event VolumeCorrected(uint64 indexed q, address indexed orchestrator, uint256 volume)',
   'event SharesSubmitted(uint64 indexed q, uint256 recipientCount, uint256 totalUsd)',
 ]);
 
