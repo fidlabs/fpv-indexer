@@ -2,6 +2,7 @@ import { ServiceOrchestratorQuarterlyVolumeParametersDto } from '@/dto/service-o
 import { ServiceOrchestratorQuarterlyVolumeDto } from '@/dto/service-orchestrator-quarterly-volume.dto';
 import { VolumeCalculationService } from '@/services/volume-calculation.service';
 import { Controller, Get, Param, ValidationPipe } from '@nestjs/common';
+import { ApiOkResponse, ApiOperation } from '@nestjs/swagger';
 
 @Controller('/volume')
 export class VolumeController {
@@ -10,7 +11,15 @@ export class VolumeController {
   ) {}
 
   @Get('/:quarterNumber/:serviceOrchestrator')
-  public getQuarterParameters(
+  @ApiOperation({
+    summary: 'Get quarterly volume of service orchestrator with details',
+  })
+  @ApiOkResponse({
+    description: `Service Orchestrator volume details in given quarter along 
+      with FIL pricing prints.`,
+    type: ServiceOrchestratorQuarterlyVolumeDto,
+  })
+  public getServiceOrchestratorQuarterlyVolume(
     @Param(new ValidationPipe({ transform: true }))
     params: ServiceOrchestratorQuarterlyVolumeParametersDto,
   ): Promise<ServiceOrchestratorQuarterlyVolumeDto> {

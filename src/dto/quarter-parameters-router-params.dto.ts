@@ -1,11 +1,14 @@
-import { Transform } from 'class-transformer';
-import { IsInt, Min } from 'class-validator';
+import type { QuarterNumberInput } from '@/lib/quarter-number';
+import { IsQuarterNumberInput } from '@/lib/validators/quarter-number-input.validator';
+import { ApiProperty } from '@nestjs/swagger';
 
 export class QuarterParametersRouterParamsDto {
-  @IsInt()
-  @Min(1)
-  @Transform(({ value }) => {
-    return parseInt(String(value), 10);
+  @ApiProperty({
+    description: `Quarter number for which result should be returned. Integer 
+      starting from 1 optionally prefixed with Q eg. Q1 for quarter number 1.`,
+    example: '1',
+    type: 'string',
   })
-  quarterNum!: number;
+  @IsQuarterNumberInput()
+  quarterNumber!: QuarterNumberInput;
 }

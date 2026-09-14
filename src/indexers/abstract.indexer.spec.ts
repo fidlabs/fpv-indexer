@@ -1,10 +1,11 @@
 import { db } from '@/db/db';
 import { AbstractIndexer } from './abstract.indexer';
+import { vi, Mock } from 'vitest';
 
-jest.mock('@/db/db', () => ({
+vi.mock('@/db/db', () => ({
   db: {
-    selectFrom: jest.fn(),
-    transaction: jest.fn(),
+    selectFrom: vi.fn(),
+    transaction: vi.fn(),
   },
 }));
 
@@ -45,7 +46,7 @@ class TestIndexer extends AbstractIndexer<any> {
 
 describe('AbstractIndexer', () => {
   it('sorts logs by block number, transaction index, and log index before updating storage', async () => {
-    const select = (db.selectFrom as jest.Mock).mockReturnValue({
+    const select = (db.selectFrom as Mock).mockReturnValue({
       selectAll: () => ({
         where: () => ({
           // eslint-disable-next-line @typescript-eslint/require-await
@@ -55,7 +56,7 @@ describe('AbstractIndexer', () => {
     });
     expect(select).toBeDefined();
 
-    const execute = jest.fn(async (callback: (tx: any) => Promise<void>) =>
+    const execute = vi.fn(async (callback: (tx: any) => Promise<void>) =>
       callback({
         insertInto: () => ({
           values: () => ({
@@ -67,12 +68,12 @@ describe('AbstractIndexer', () => {
         }),
       }),
     );
-    (db.transaction as jest.Mock).mockReturnValue({ execute });
+    (db.transaction as Mock).mockReturnValue({ execute });
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/require-await
     const recentClient = { getBlockNumber: async () => 2n } as any;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const config = { get: jest.fn(() => undefined) } as any;
+    const config = { get: vi.fn(() => undefined) } as any;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
     const indexer = new TestIndexer(config, recentClient, {} as any);
 

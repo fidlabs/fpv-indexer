@@ -6,7 +6,7 @@ import { QuarterDto } from '@/dto/quarter.dto';
 import { ServiceOrchestratorQuarterlyVolumeParametersDto } from '@/dto/service-orchestrator-quarterly-volume-parameters.dto';
 import { ServiceOrchestratorQuarterlyVolumePostingDto } from '@/dto/service-orchestrator-quarterly-volume-posting.dto';
 import { RECENT_NODE_CLIENT } from '@/lib/constants';
-import { QuarterNumber } from '@/lib/quarter-number';
+import { QuarterNumber, QuarterNumberInput } from '@/lib/quarter-number';
 import type { ConfigShape, FilecoinPublicClient } from '@/lib/types';
 import { divideBigInt, numericToBigInt } from '@/lib/utils';
 import { Inject, Injectable } from '@nestjs/common';
@@ -93,8 +93,9 @@ export class QuartersService {
   }
 
   public async getQuarterParameters(
-    quarterNum: number,
+    quarterNum: QuarterNumberInput,
   ): Promise<QuarterParametersDto> {
+    const quarterNumInt = QuarterNumber.from(quarterNum).toNumber();
     const activationEpoch = this.configService.get('ACTIVATION_EPOCH', {
       infer: true,
     });
@@ -104,7 +105,7 @@ export class QuartersService {
     const previousQuarterBoundVolumeResult = await db
       .selectFrom('quarter_bound_volume')
       .select('volume_atto_usd')
-      .where('quarter_num', '=', quarterNum - 1)
+      .where('quarter_num', '=', quarterNumInt - 1)
       .executeTakeFirst();
     const previousQuarterBoundVolumeAttoUsd = previousQuarterBoundVolumeResult
       ? numericToBigInt(previousQuarterBoundVolumeResult.volume_atto_usd)
@@ -118,7 +119,7 @@ export class QuartersService {
     const previousQuarterPricePeriodsCountResult = await db
       .selectFrom('qualified_price_periods_mv')
       .select((eb) => eb.fn.countAll().as('count'))
-      .where('quarter_num', '=', quarterNum - 1)
+      .where('quarter_num', '=', quarterNumInt - 1)
       .executeTakeFirst();
     const previousQuarterPricePeriodsCount =
       previousQuarterPricePeriodsCountResult
@@ -153,7 +154,7 @@ export class QuartersService {
       .selectFrom('parameters_by_quarter')
       .distinctOn('parameter_type')
       .select(['parameter_type', 'parameter_value'])
-      .where('quarter_num', '<', quarterNum)
+      .where('quarter_num', '<', quarterNumInt)
       .orderBy('parameter_type')
       .orderBy('quarter_num', 'desc')
       .orderBy('update_epoch', 'desc')
@@ -204,10 +205,10 @@ export class QuartersService {
       .select(['token_address'])
       .where((eb) => {
         return eb.and([
-          eb('admittance_quarter_num', '<', quarterNum),
+          eb('admittance_quarter_num', '<', quarterNumInt),
           eb.or([
             eb('removal_quarter_num', 'is', null),
-            eb('removal_quarter_num', '>=', quarterNum),
+            eb('removal_quarter_num', '>=', quarterNumInt),
           ]),
         ]);
       })
@@ -261,10 +262,10 @@ export class QuartersService {
       .select(['contract_address'])
       .where((eb) => {
         return eb.and([
-          eb('admittance_quarter_num', '<', quarterNum),
+          eb('admittance_quarter_num', '<', quarterNumInt),
           eb.or([
             eb('removal_quarter_num', 'is', null),
-            eb('removal_quarter_num', '>=', quarterNum),
+            eb('removal_quarter_num', '>=', quarterNumInt),
           ]),
         ]);
       })
@@ -282,7 +283,7 @@ export class QuartersService {
 
     if (priceBandBpsParameter === undefined) {
       throw this.createMissingParameterError(
-        quarterNum,
+        quarterNumInt,
         ServiceRewardsActorParameterType.PRICE_BAND_BPS,
       );
     }
@@ -293,7 +294,7 @@ export class QuartersService {
 
     if (priceBandBps === null) {
       throw this.createInvalidParameterError(
-        quarterNum,
+        quarterNumInt,
         ServiceRewardsActorParameterType.PRICE_BAND_BPS,
       );
     }
@@ -308,7 +309,7 @@ export class QuartersService {
 
     if (minLotFloorParameter === undefined) {
       throw this.createMissingParameterError(
-        quarterNum,
+        quarterNumInt,
         ServiceRewardsActorParameterType.MIN_LOT_FLOOR,
       );
     }
@@ -319,7 +320,7 @@ export class QuartersService {
 
     if (minLotFloorAttoUsd === null) {
       throw this.createMissingParameterError(
-        quarterNum,
+        quarterNumInt,
         ServiceRewardsActorParameterType.MIN_LOT_FLOOR,
       );
     }
@@ -335,7 +336,7 @@ export class QuartersService {
 
     if (minLotAlphaNumeratorParameter === undefined) {
       throw this.createMissingParameterError(
-        quarterNum,
+        quarterNumInt,
         ServiceRewardsActorParameterType.MIN_LOT_ALPHA_NUMERATOR,
       );
     }
@@ -346,7 +347,7 @@ export class QuartersService {
 
     if (minLotAlphaNumerator === null) {
       throw this.createMissingParameterError(
-        quarterNum,
+        quarterNumInt,
         ServiceRewardsActorParameterType.MIN_LOT_ALPHA_NUMERATOR,
       );
     }
@@ -360,7 +361,7 @@ export class QuartersService {
 
     if (minLotAlphaDenominatorParameter === undefined) {
       throw this.createMissingParameterError(
-        quarterNum,
+        quarterNumInt,
         ServiceRewardsActorParameterType.MIN_LOT_ALPHA_DENOMINATOR,
       );
     }
@@ -371,7 +372,7 @@ export class QuartersService {
 
     if (minLotAlphaDenominator === null) {
       throw this.createMissingParameterError(
-        quarterNum,
+        quarterNumInt,
         ServiceRewardsActorParameterType.MIN_LOT_ALPHA_DENOMINATOR,
       );
     }
