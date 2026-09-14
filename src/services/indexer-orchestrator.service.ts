@@ -5,7 +5,7 @@ import { FilecoinPayV1Indexer } from '@/indexers/filecoin-pay-v1.indexer';
 import { ServiceRewardsActorIndexer } from '@/indexers/service-rewards-actor.indexer';
 import { packageMajorVersion, packageSemver } from '@/lib/constants';
 import { ConfigShape } from '@/lib/types';
-import { minBigInt } from '@/lib/utils';
+import { minBigInt, numericToBigInt } from '@/lib/utils';
 import {
   Injectable,
   Logger,
@@ -14,7 +14,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { CronExpression, SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
-import { Address, isAddress, zeroAddress } from 'viem';
+import { Address, isAddress, isAddressEqual, zeroAddress } from 'viem';
 import { FilfoxApiService } from './filfox-api.service';
 
 @Injectable()
@@ -195,8 +195,14 @@ export class IndexerOrchestratorService implements OnApplicationBootstrap {
           .execute(),
         db
           .selectFrom('filecoin_pay_contract')
-          .select('contract_address')
+          .select((eb) => [
+            'contract_address',
+            eb.fn.max('removal_epoch').as('max_block_number'),
+          ])
           .distinctOn('contract_address')
+          .groupBy(['contract_address', 'removal_epoch'])
+          .orderBy('contract_address')
+          .orderBy('removal_epoch', (ob) => ob.desc().nullsFirst())
           .execute(),
         db
           .selectFrom('filecoin_pay_rail as r')
@@ -237,9 +243,26 @@ export class IndexerOrchestratorService implements OnApplicationBootstrap {
       version: packageSemver ? packageSemver.toString() : 'N/A',
       isRunning: this.isRunning,
       indexedUpTo: minBigInt(
-        // TODO: filter out not longer indexed contract due to removal from
-        // admitted list
-        ...(contractsStates.map((i) => i.indexedUpTo) as [bigint, ...bigint[]]),
+        ...(contractsStates
+          .filter((state) => {
+            const isRemovedAndSyncedFilecoinPayAddress =
+              filecoinPayContracts.find((filecoinPayContract) => {
+                return (
+                  isAddress(state.address) &&
+                  isAddress(filecoinPayContract.contract_address) &&
+                  isAddressEqual(
+                    state.address,
+                    filecoinPayContract.contract_address,
+                  ) &&
+                  filecoinPayContract.max_block_number !== null &&
+                  state.indexedUpTo >=
+                    numericToBigInt(filecoinPayContract.max_block_number)
+                );
+              });
+
+            return !isRemovedAndSyncedFilecoinPayAddress;
+          })
+          .map((i) => i.indexedUpTo) as [bigint, ...bigint[]]),
       ),
       contracts: contractsStates,
     };
