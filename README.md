@@ -2,7 +2,7 @@
 
 WIP
 
-# RESTful API
+## RESTful API
 
 Filecoin Pay Volume indexer instance exposes a RESTful API to query Service Orchestrators' quarterly volume calculated according to FIP-0118, along with additional endpoints for checking service health and in general improving auditability and visibility. OpenAPI documentation of available endpoints and returned data types is available on root route (`/`) of running indexer instance.
 
