@@ -39,24 +39,24 @@ export class IndexerOrchestratorService implements OnApplicationBootstrap {
   public async onApplicationBootstrap() {
     await this.cleanupIfNeeded();
 
-    const configuredCronExpression = this.configService.get(
-      'INTERVAL_CRON_EXPRESSION',
-      { infer: true },
-    );
-    const cronJob = new CronJob(
-      configuredCronExpression ?? CronExpression.EVERY_HOUR,
-      () => {
-        void this.index();
-      },
-    );
+    // const configuredCronExpression = this.configService.get(
+    //   'INTERVAL_CRON_EXPRESSION',
+    //   { infer: true },
+    // );
+    // const cronJob = new CronJob(
+    //   configuredCronExpression ?? CronExpression.EVERY_HOUR,
+    //   () => {
+    //     void this.index();
+    //   },
+    // );
 
-    this.schedulerRegistry.addCronJob(
-      IndexerOrchestratorService.CRON_JOB_NAME,
-      cronJob,
-    );
+    // this.schedulerRegistry.addCronJob(
+    //   IndexerOrchestratorService.CRON_JOB_NAME,
+    //   cronJob,
+    // );
 
-    cronJob.start();
-    void this.index();
+    // cronJob.start();
+    // void this.index();
   }
 
   private async index() {

@@ -2,7 +2,11 @@ import { AppController } from '@/controllers/app.controller';
 import { QuartersController } from '@/controllers/quarters.controller';
 import { AuctionableTokenIndexer } from '@/indexers/auctionable-token.indexer';
 import { FilecoinPayV1Indexer } from '@/indexers/filecoin-pay-v1.indexer';
-import { ARCHIVE_NODE_CLIENT, RECENT_NODE_CLIENT } from '@/lib/constants';
+import {
+  ARCHIVE_NODE_CLIENT,
+  packageSemver,
+  RECENT_NODE_CLIENT,
+} from '@/lib/constants';
 import type { ConfigShape, FilecoinPublicClient } from '@/lib/types';
 import { createClientForChain, validateConfig } from '@/lib/utils';
 import { IndexerOrchestratorService } from '@/services/indexer-orchestrator.service';
@@ -19,6 +23,12 @@ import { ConfigSeedService } from './services/config-seed.service';
 import { ERC20TokenInfoService } from './services/erc-20-token-info.service';
 import { FilfoxApiService } from './services/filfox-api.service';
 import { VolumeCalculationService } from './services/volume-calculation.service';
+import { createObserveModule } from '@nestjs/observe';
+
+export const { ObserveModule, ObserveInstrument } = createObserveModule();
+
+const observeAppKey = process.env.OBSERVE_APP_KEY ?? null;
+const observeAppSecret = process.env.OBSERVE_APP_KEY ?? null;
 
 const recentNodeClientProvider: FactoryProvider<FilecoinPublicClient> = {
   provide: RECENT_NODE_CLIENT,
@@ -52,6 +62,19 @@ const archiveNodeClientProvider: FactoryProvider<FilecoinPublicClient> = {
     ScheduleModule.forRoot(),
     CacheModule.register(),
     HttpModule,
+
+    ...(observeAppKey !== null && observeAppSecret !== null
+      ? [
+          ObserveModule.forRoot({
+            appKey: observeAppKey,
+            appSecret: observeAppSecret,
+            serviceId: 'fpv-indexer',
+            serviceVersion: packageSemver
+              ? packageSemver.toString()
+              : undefined,
+          }),
+        ]
+      : []),
   ],
   controllers: [AppController, QuartersController, VolumeController],
   providers: [
