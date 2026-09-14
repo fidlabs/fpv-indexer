@@ -4,15 +4,6 @@ import { db } from '@/db/db';
 import { ConfigSeedService } from '@/services/config-seed.service';
 import { IndexerOrchestratorService } from '@/services/indexer-orchestrator.service';
 import { QuartersService } from '@/services/quarters.service';
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  jest,
-} from '@jest/globals';
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { BigNumber } from 'bignumber.js';
@@ -26,6 +17,7 @@ import {
   TransactionNotFoundError,
   zeroAddress,
 } from 'viem';
+import { vi } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { ARCHIVE_NODE_CLIENT, RECENT_NODE_CLIENT } from '../src/lib/constants';
 import '../src/polyfill';
@@ -239,7 +231,7 @@ describe('FIP-0118 adherence test', () => {
       .overrideProvider(FilfoxApiService)
       .useValue({
         // eslint-disable-next-line @typescript-eslint/require-await
-        getContractDeploymentEpoch: jest.fn(async () => 0n),
+        getContractDeploymentEpoch: vi.fn(async () => 0n),
       })
       .overrideProvider(ERC20TokenInfoService)
       .useValue(new TestERC20Service())

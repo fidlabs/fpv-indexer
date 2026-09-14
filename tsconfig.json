@@ -24,6 +24,6 @@
     "paths": {
       "@/*": ["./src/*"]
     },
-    "types": ["node", "jest"]
+    "types": ["vitest/globals", "node"]
   }
 }
