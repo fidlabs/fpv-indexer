@@ -1,6 +1,14 @@
 # Filecoin Pay Volume indexer
 
-WIP
+`fpv-indexer` indexes Filecoin Pay and Service Rewards Actor on-chain events,
+including contracts, payment rails, settlements, token changes, fee auctions,
+and service orchestrator activity. It maintains the indexing state in
+PostgreSQL and calculates service orchestrators' quarterly volume according to
+[FIP-0118](https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0118.md).
+
+The application exposes a REST API for querying calculated quarterly volumes,
+indexing status, and related data, with interactive OpenAPI documentation at
+the root route.
 
 ## Deployment
 
