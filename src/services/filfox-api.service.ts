@@ -31,7 +31,7 @@ export class FilfoxApiService {
     try {
       const prefix =
         this.recentNodeClient.chain.id === filecoinCalibration.id
-          ? 'https://calibration.api.filfox.info'
+          ? 'https://calibration.filfox.info'
           : 'https://filfox.info';
 
       const response = await fetch(
