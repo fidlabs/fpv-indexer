@@ -24,7 +24,7 @@ export class QuartersController {
     return this.quartersService.getQuarters();
   }
 
-  @Get('/:quarterNum/parameters')
+  @Get('/:quarterNumber/parameters')
   @ApiOperation({
     summary:
       'Get parameters for given quarters, like admitted lists, pricing parameters etc.',
