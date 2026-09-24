@@ -14,7 +14,7 @@ the root route.
 
 | Network | URL | Notes |
 | --- | --- | --- |
-| Filecoin Calibration | https://fpv-indexer.calibration.allocator.tech/ | FIP-0118 calibnet rehearsal; `EPOCHS_PER_QUARTER=2880` (one quarter per day), `ACTIVATION_EPOCH=4097614` |
+| Filecoin Calibration | https://fpv-indexer.calibration.allocator.tech/ | FIP-0118 calibnet rehearsal; `EPOCHS_PER_QUARTER=2880` (one quarter per day), `ACTIVATION_EPOCH=4109134` |
 | Filecoin Mainnet | TBD | to be stood up for the network upgrade |
 
 Interactive OpenAPI documentation is served at the root route of each
