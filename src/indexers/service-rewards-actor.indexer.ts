@@ -324,48 +324,55 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<EventType> {
       );
     }
 
-    const quarterStartEpoch =
-      activationEpoch + epochsPerQuarter * (maxBigInt(logQuarter, 1n) - 1n);
-    const quarterEndEpoch = quarterStartEpoch + epochsPerQuarter - 1n;
+    const [fromEpoch, fromLogIndex] = await (async () => {
+      // Q0 is an informal pre-activation period. Any binding declared during
+      // Q0 applies from the first epoch of Q1, regardless of when the initial
+      // pricing parameters are emitted before activation.
+      if (logQuarter === 0n) {
+        return [activationEpoch, 0] as const;
+      }
 
-    const registrationCutoff = await tx
-      .selectFrom('service_rewards_actor_parameter')
-      .select('parameter_value')
-      .where(
-        'parameter_type',
-        '=',
-        ServiceRewardsActorParameterType.REGISTRATION_CUTOFF_EPOCHS,
-      )
-      .where('update_epoch', '<', quarterStartEpoch.toString())
-      .orderBy('update_epoch', 'desc')
-      .orderBy('update_log_index', 'desc')
-      .executeTakeFirst();
+      const quarterStartEpoch =
+        activationEpoch + epochsPerQuarter * (logQuarter - 1n);
+      const quarterEndEpoch = quarterStartEpoch + epochsPerQuarter - 1n;
 
-    const noRegistrationCutoffError = new TypeError(
-      `Cannot bind pair ${pairTupleString} at epoch ${log.blockNumber} - no "REGISTRATION_CUTOFF" parameter found for quarter Q${logQuarter}.`,
-    );
+      const registrationCutoff = await tx
+        .selectFrom('service_rewards_actor_parameter')
+        .select('parameter_value')
+        .where(
+          'parameter_type',
+          '=',
+          ServiceRewardsActorParameterType.REGISTRATION_CUTOFF_EPOCHS,
+        )
+        .where('update_epoch', '<', quarterStartEpoch.toString())
+        .orderBy('update_epoch', 'desc')
+        .orderBy('update_log_index', 'desc')
+        .executeTakeFirst();
 
-    if (!registrationCutoff) {
-      throw noRegistrationCutoffError;
-    }
-
-    const registrationCutoffEpochs = BigNumber(
-      registrationCutoff.parameter_value,
-    ).toBigInt();
-
-    if (registrationCutoffEpochs === null) {
-      throw noRegistrationCutoffError;
-    }
-
-    if (registrationCutoffEpochs > epochsPerQuarter) {
-      throw new TypeError(
-        `"REGISTRATION_CUTOFF" param for quarter Q${logQuarter} has value ${registrationCutoffEpochs} which is more than defined ${epochsPerQuarter} epochs per quarter.`,
+      const noRegistrationCutoffError = new TypeError(
+        `Cannot bind pair ${pairTupleString} at epoch ${log.blockNumber} - no "REGISTRATION_CUTOFF" parameter found for quarter Q${logQuarter}.`,
       );
-    }
 
-    const cutoffStartEpoch = quarterEndEpoch - registrationCutoffEpochs + 1n;
+      if (!registrationCutoff) {
+        throw noRegistrationCutoffError;
+      }
 
-    const [fromEpoch, fromLogIndex] = (() => {
+      const registrationCutoffEpochs = BigNumber(
+        registrationCutoff.parameter_value,
+      ).toBigInt();
+
+      if (registrationCutoffEpochs === null) {
+        throw noRegistrationCutoffError;
+      }
+
+      if (registrationCutoffEpochs > epochsPerQuarter) {
+        throw new TypeError(
+          `"REGISTRATION_CUTOFF" param for quarter Q${logQuarter} has value ${registrationCutoffEpochs} which is more than defined ${epochsPerQuarter} epochs per quarter.`,
+        );
+      }
+
+      const cutoffStartEpoch = quarterEndEpoch - registrationCutoffEpochs + 1n;
+
       // registration falls into registration cutoff, binding applies from the
       // next quarter
       if (log.blockNumber >= cutoffStartEpoch) {
@@ -416,16 +423,23 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<EventType> {
     const quarterStartEpoch =
       activationEpoch + epochsPerQuarter * (maxBigInt(logQuarter, 1n) - 1n);
 
-    // inherited pairs start from quarter start otherwise from the epoch and
-    // next log index they were reassigned at
-    const fromEpoch = log.args.inherit ? quarterStartEpoch : log.blockNumber;
-    const fromLogIndex = log.args.inherit ? 0 : log.logIndex + 1;
-    const unboundToEpoch = log.args.inherit ? fromEpoch - 1n : log.blockNumber;
-    const unboundToLogIndex = log.args.inherit
-      ? // since to_log_index was designed to be inclusive we need to create an
-        // unreachable max log number, here limit of the underlying DB field
-        2147483647
-      : log.logIndex;
+    const isPreActivation = logQuarter === 0n;
+
+    // A reassignment made in Q0 applies from activation. After activation,
+    // inherited pairs start from quarter start; prospective reassignments
+    // start immediately after the reassignment log.
+    const fromEpoch =
+      isPreActivation || log.args.inherit ? quarterStartEpoch : log.blockNumber;
+    const fromLogIndex =
+      isPreActivation || log.args.inherit ? 0 : log.logIndex + 1;
+    const unboundToEpoch =
+      isPreActivation || log.args.inherit ? fromEpoch - 1n : log.blockNumber;
+    const unboundToLogIndex =
+      isPreActivation || log.args.inherit
+        ? // since to_log_index was designed to be inclusive we need to create an
+          // unreachable max log number, here limit of the underlying DB field
+          2147483647
+        : log.logIndex;
 
     // if binding got reassigned before it could start delete it to prevent
     // primary key constraint violations
