@@ -22,6 +22,10 @@ export interface GetLogsParameters {
   toBlock: bigint;
 }
 
+export interface ValidateLogsParameters extends GetLogsParameters {
+  minBlockNumber: bigint;
+}
+
 @Injectable()
 export abstract class AbstractIndexer<EventType extends AbiEvent> {
   public static DEFAULT_BATCH_BLOCK_SIZE = 2n * 60n * 12n;
@@ -34,6 +38,13 @@ export abstract class AbstractIndexer<EventType extends AbiEvent> {
     txContext: TransactionContext,
     logs: LogForEvents<EventType>[],
   ): Promise<void>;
+  protected validateLogs(
+    logs: LogForEvents<EventType>[],
+    parameters: ValidateLogsParameters,
+  ): void {
+    void logs;
+    void parameters;
+  }
   protected logger: Logger;
 
   constructor(
@@ -100,12 +111,38 @@ export abstract class AbstractIndexer<EventType extends AbiEvent> {
       `Fetching logs in block range [${fromBlock.toString()}-${toBlock.toString()}] using ${shouldUseArchiveNode ? '"Archive Node"' : '"Recent Node"'}`,
     );
 
-    const logs = await this.getLogs({
+    const getLogsParameters = {
       client: publicClient,
       contractAddress,
       fromBlock,
       toBlock,
-    });
+    };
+    let logs = await this.getLogs(getLogsParameters);
+
+    try {
+      this.validateLogs(logs, {
+        ...getLogsParameters,
+        minBlockNumber,
+      });
+    } catch {
+      const fallbackClient = shouldUseArchiveNode
+        ? this.recentNodeClient
+        : this.archiveNodeClient;
+
+      logger.warn(
+        `Logs returned by the selected RPC failed validation. Retrying block range [${fromBlock.toString()}-${toBlock.toString()}] using the fallback node.`,
+      );
+
+      logs = await this.getLogs({
+        ...getLogsParameters,
+        client: fallbackClient,
+      });
+      this.validateLogs(logs, {
+        ...getLogsParameters,
+        client: fallbackClient,
+        minBlockNumber,
+      });
+    }
     const logsSorted = this.sortLogs(logs);
 
     await db.transaction().execute(async (tx) => {

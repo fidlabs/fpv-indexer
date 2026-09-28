@@ -14,7 +14,11 @@ import type {
   FilecoinPublicClient,
   LogForEvents,
 } from '../lib/types';
-import { AbstractIndexer, type GetLogsParameters } from './abstract.indexer';
+import {
+  AbstractIndexer,
+  type GetLogsParameters,
+  type ValidateLogsParameters,
+} from './abstract.indexer';
 
 type EventType = (typeof events)[number];
 type Logs = LogForEvents<EventType>[];
@@ -105,6 +109,20 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<EventType> {
     });
   }
 
+  protected validateLogs(logs: Logs, parameters: ValidateLogsParameters): void {
+    if (parameters.fromBlock !== parameters.minBlockNumber) return;
+
+    const initialAdmission = logs.find(
+      (log) => log.eventName === 'OrchestratorAdmitted',
+    );
+
+    if (!initialAdmission) {
+      throw new TypeError(
+        `Missing the deployment-time "OrchestratorAdmitted" event for Service Rewards Actor ${parameters.contractAddress} in its first indexed block range starting at ${parameters.minBlockNumber}. The current SRA contract always emits this event from initialize(); refusing to advance the indexer checkpoint with incomplete RPC data.`,
+      );
+    }
+  }
+
   protected async updateDb(tx: TransactionContext, logs: Logs): Promise<void> {
     const admittedTokens = logs
       .filter((log) => log.eventName === 'AdmittedListsUpdated')
@@ -113,26 +131,50 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<EventType> {
       );
     const uniqueAdmittedTokens = uniq(admittedTokens);
 
-    const admittedTokensDecimalsRequests = uniqueAdmittedTokens.map(
-      async (tokenAddress) => {
-        const decimals = await this.erc20Service.getTokenDecimals(tokenAddress);
-        return [tokenAddress, decimals] as const;
-      },
-    );
-    const admittedTokensSymbolsRequests = uniqueAdmittedTokens.map(
-      async (tokenAddress) => {
-        const symbol = await this.erc20Service.getTokenSymbol(tokenAddress);
-        return [tokenAddress, symbol] as const;
-      },
+    const admittedTokensMetadata = await Promise.all(
+      uniqueAdmittedTokens.map(async (tokenAddress) => {
+        try {
+          const [decimals, symbol] = await Promise.all([
+            this.erc20Service.getTokenDecimals(tokenAddress),
+            this.erc20Service.getTokenSymbol(tokenAddress),
+          ]);
+
+          if (!Number.isInteger(decimals) || decimals < 0 || decimals > 18) {
+            throw new TypeError(
+              `Unsupported decimals value ${decimals}; expected an integer between 0 and 18.`,
+            );
+          }
+
+          if (symbol.trim().length === 0) {
+            throw new TypeError('Token symbol is empty.');
+          }
+
+          return { tokenAddress, decimals, symbol };
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          this.logger.warn(
+            `Skipping admitted token ${tokenAddress}: it does not expose supported ERC-20 metadata (${reason})`,
+          );
+          return null;
+        }
+      }),
     );
 
-    const [admittedTokensDecimals, admittedTokensSymbols] = await Promise.all([
-      Promise.all(admittedTokensDecimalsRequests),
-      Promise.all(admittedTokensSymbolsRequests),
-    ]);
-
-    const decimalsMap = new Map(admittedTokensDecimals);
-    const symbolsMap = new Map(admittedTokensSymbols);
+    const validAdmittedTokensMetadata = admittedTokensMetadata.filter(
+      (metadata) => metadata !== null,
+    );
+    const decimalsMap = new Map(
+      validAdmittedTokensMetadata.map(({ tokenAddress, decimals }) => [
+        tokenAddress,
+        decimals,
+      ]),
+    );
+    const symbolsMap = new Map(
+      validAdmittedTokensMetadata.map(({ tokenAddress, symbol }) => [
+        tokenAddress,
+        symbol,
+      ]),
+    );
 
     for (const log of logs) {
       switch (log.eventName) {
@@ -615,16 +657,9 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<EventType> {
 
     for (const tokenAddress of addedTokens) {
       const decimals = decimalsMap.get(tokenAddress as Address);
-
-      if (decimals === undefined) {
-        throw new TypeError(`No decimals found for token ${tokenAddress}.`);
-      }
-
       const symbol = symbolsMap.get(tokenAddress as Address);
 
-      if (symbol === undefined) {
-        throw new TypeError(`No symbol found for token ${tokenAddress}.`);
-      }
+      if (decimals === undefined || symbol === undefined) continue;
 
       await tx
         .insertInto('whitelisted_token')
