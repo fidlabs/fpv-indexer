@@ -3183,10 +3183,9 @@ describe('FIP-0118 adherence test', () => {
     expect(responseA.body).toMatchObject({
       serviceOrchestrator: orchestratorA.toLowerCase(),
       quarterNum: 1,
-      volumeAttoUsd: null,
+      volumeAttoUsd: '0',
       corrected: true,
-      postingEpoch: null,
-      postingTxHash: null,
+      postingEpoch: q2.startEpoch.toString(),
     });
 
     expect(postingsA.length).toBe(2);
@@ -3200,6 +3199,20 @@ describe('FIP-0118 adherence test', () => {
     });
 
     expect(postingsB.length).toBe(1);
+
+    const responseNoPostings = await request(app.getHttpServer())
+      .get(`/quarters/2/postings/${orchestratorA}`)
+      .expect(200);
+
+    expect(responseNoPostings.body).toMatchObject({
+      serviceOrchestrator: orchestratorA.toLowerCase(),
+      quarterNum: 2,
+      volumeAttoUsd: null,
+      corrected: false,
+      postingEpoch: null,
+      postingTxHash: null,
+      postings: [],
+    });
   });
 
   async function resetDatabase() {

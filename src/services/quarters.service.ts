@@ -468,19 +468,10 @@ export class QuartersService {
     return {
       serviceOrchestrator,
       quarterNum: quarterNumInt,
-      volumeAttoUsd:
-        !lastPosting || lastPosting.volumeAttoUsd === 0n
-          ? null
-          : lastPosting.volumeAttoUsd,
+      volumeAttoUsd: lastPosting ? lastPosting.volumeAttoUsd : null,
       corrected,
-      postingEpoch:
-        !lastPosting || lastPosting.volumeAttoUsd === 0n
-          ? null
-          : lastPosting.postingEpoch,
-      postingTxHash:
-        !lastPosting || lastPosting.volumeAttoUsd === 0n
-          ? null
-          : lastPosting.postingTxHash,
+      postingEpoch: lastPosting ? lastPosting.postingEpoch : null,
+      postingTxHash: lastPosting ? lastPosting.postingTxHash : null,
       postings,
     } satisfies ServiceOrchestratorQuarterlyVolumePostingDto;
   }

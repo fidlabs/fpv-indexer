@@ -51,8 +51,9 @@ export class ServiceOrchestratorQuarterlyVolumePostingDto {
   quarterNum!: number;
 
   @ApiProperty({
-    description: `Final volume after corrections in atto-USD. Null if no volume 
-      was posted or if volume was corrected to 0.`,
+    description: `Final volume after corrections in atto-USD. Null only if
+      nothing was ever posted or corrected for given quarter. A volume
+      corrected to 0 is reported as "0", not null.`,
     type: 'string',
     nullable: true,
     example: 65_432_100_000_000_000_000_000n.toString(),
@@ -67,8 +68,8 @@ export class ServiceOrchestratorQuarterlyVolumePostingDto {
   corrected!: boolean;
 
   @ApiProperty({
-    description: `Epoch at which final volume after corrections was decided. 
-      Null if "volumeAttoUsd" is null.`,
+    description: `Epoch at which final volume after corrections was decided.
+      Null only if nothing was ever posted or corrected for given quarter.`,
     type: 'string',
     nullable: true,
     example: '111',
@@ -76,8 +77,8 @@ export class ServiceOrchestratorQuarterlyVolumePostingDto {
   postingEpoch!: bigint | null;
 
   @ApiProperty({
-    description: `Hash of transaction that decided the final volume. Null if 
-      "volumeAttoUsd" is null.`,
+    description: `Hash of transaction that decided the final volume. Null only
+      if nothing was ever posted or corrected for given quarter.`,
     type: 'string',
     nullable: true,
     example:
