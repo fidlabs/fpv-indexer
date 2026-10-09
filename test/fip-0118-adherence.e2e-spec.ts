@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 import FilecoinPayV1ABI from '@/abis/filecoin-pay-v1.abi';
 import { db } from '@/db/db';
-import { ERC20Metadata } from '@/lib/types';
+import { ERC20Metadata, FilecoinActions } from '@/lib/types';
 import { ConfigSeedService } from '@/services/config-seed.service';
 import { IndexerOrchestratorService } from '@/services/indexer-orchestrator.service';
 import { QuartersService } from '@/services/quarters.service';
@@ -81,9 +81,25 @@ const payerB =
   '0x000000000000000000000000000000000000060b' as const satisfies Address;
 
 class TestFilecoinClient {
+  public filecoin: FilecoinActions['filecoin'];
   private logs: TestLog[] = [];
   private transactionsMap: Map<Hash, TestTransaction> = new Map();
   private currentBlockNumber: bigint = 0n;
+
+  constructor() {
+    const getBlockNumber = this.getBlockNumber.bind(this);
+
+    this.filecoin = {
+      async chainGetFinalizedTipSet() {
+        const blockNumber = await getBlockNumber();
+        return Promise.resolve({
+          Cids: [],
+          Blocks: [],
+          Height: Number(blockNumber),
+        });
+      },
+    };
+  }
 
   public resetWithLogs(logs: TestLog[], transactions: TestTransaction[] = []) {
     if (logs.some((log) => log.blockNumber === 0n)) {
@@ -3210,7 +3226,7 @@ describe('FIP-0118 adherence test', () => {
       [notAdmittedContractSeedAuctionTx],
     );
 
-    testFilecoinClient.forwardTo((b) => b + 2n);
+    testFilecoinClient.forwardTo((b) => b + 1n);
 
     await indexerOrchestrator.execute();
 
