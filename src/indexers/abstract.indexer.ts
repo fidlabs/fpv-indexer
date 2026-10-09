@@ -10,7 +10,7 @@ import type {
   IndexerRunParameters,
   LogForEvents,
 } from '@/lib/types';
-import { compareNullableNumber } from '@/lib/utils';
+import { compareNullableNumber, maxBigInt, numericToBigInt } from '@/lib/utils';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { AbiEvent, Address, Log } from 'viem';
@@ -24,8 +24,6 @@ export interface GetLogsParameters {
 
 @Injectable()
 export abstract class AbstractIndexer<EventType extends AbiEvent> {
-  public static DEFAULT_BATCH_BLOCK_SIZE = 2n * 60n * 12n;
-
   public abstract getName(): string;
   protected abstract getLogs(
     parameters: GetLogsParameters,
@@ -61,47 +59,68 @@ export abstract class AbstractIndexer<EventType extends AbiEvent> {
     if (
       maxBlockNumber !== null &&
       !!lastRun &&
-      BigInt(lastRun.end_block) >= maxBlockNumber
+      numericToBigInt(lastRun.end_block) >= maxBlockNumber
     ) {
       logger.log('Nothing to index.');
       return;
     }
-
-    const currentBlock = await this.recentNodeClient.getBlockNumber();
     const fromBlock = !lastRun
       ? minBlockNumber
-      : BigInt(lastRun.end_block) + 1n;
+      : numericToBigInt(lastRun.end_block) + 1n;
+    const archiveThreshold = this.configService.get('ARCHIVE_RPC_THRESHOLD', {
+      infer: true,
+    });
+    const recentHead = await this.recentNodeClient.getBlockNumber();
+    const shouldUseArchiveNode = recentHead - fromBlock > archiveThreshold;
+    const selectedNode = shouldUseArchiveNode
+      ? this.archiveNodeClient
+      : this.recentNodeClient;
 
-    if (fromBlock >= currentBlock) {
+    const finalizedHeightMaxDifference = this.configService.get(
+      'FINALIZED_HEIGHT_MAX_DIFFERENCE',
+      { infer: true },
+    );
+    const [currentHeight, finalizedHeight] = await Promise.all([
+      selectedNode.getBlockNumber(),
+      selectedNode.filecoin
+        .chainGetFinalizedTipSet()
+        .then((r) => numericToBigInt(r.Height)),
+    ]);
+
+    const maxToBlock =
+      typeof finalizedHeightMaxDifference === 'bigint'
+        ? maxBigInt(
+            finalizedHeight,
+            currentHeight - finalizedHeightMaxDifference,
+          )
+        : finalizedHeight;
+
+    if (fromBlock > maxToBlock) {
       logger.log('Nothing to index.');
       return;
     }
 
-    const blockDifference = currentBlock - fromBlock;
-    const configuredBatchBlockSize = this.configService.get(
-      'BATCH_BLOCK_SIZE',
-      { infer: true },
-    );
-    const batchBlockSize =
-      typeof configuredBatchBlockSize === 'number'
-        ? BigInt(configuredBatchBlockSize)
-        : AbstractIndexer.DEFAULT_BATCH_BLOCK_SIZE;
+    const blockDifference = maxToBlock - fromBlock;
+    const batchBlockSize = this.configService.get('BATCH_BLOCK_SIZE', {
+      infer: true,
+    });
     const toBlock =
       blockDifference >= batchBlockSize
         ? fromBlock + batchBlockSize - 1n
-        : currentBlock;
-    const shouldUseArchiveNode =
-      blockDifference >= this.configService.get('ARCHIVE_RPC_THRESHOLD');
-    const publicClient = shouldUseArchiveNode
-      ? this.archiveNodeClient
-      : this.recentNodeClient;
+        : maxToBlock;
+
+    if (toBlock > finalizedHeight) {
+      logger.warn(
+        `Due to indexer configuration blocks up to epoch ${toBlock} will be indexed but finalized epoch is ${finalizedHeight}. This may result in invalid data after chain reorganization.`,
+      );
+    }
 
     logger.log(
       `Fetching logs in block range [${fromBlock.toString()}-${toBlock.toString()}] using ${shouldUseArchiveNode ? '"Archive Node"' : '"Recent Node"'}`,
     );
 
     const logs = await this.getLogs({
-      client: publicClient,
+      client: selectedNode,
       contractAddress,
       fromBlock,
       toBlock,
@@ -130,7 +149,7 @@ export abstract class AbstractIndexer<EventType extends AbiEvent> {
     });
 
     const logsCount = logs.length;
-    const keepRunning = currentBlock !== toBlock;
+    const keepRunning = maxToBlock !== toBlock;
 
     logger.log(
       keepRunning
