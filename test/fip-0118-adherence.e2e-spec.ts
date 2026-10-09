@@ -67,10 +67,14 @@ const orchestratorA =
   '0x000000000000000000000000000000000000040a' as const satisfies Address;
 const orchestratorB =
   '0x000000000000000000000000000000000000040b' as const satisfies Address;
+const orchestratorC =
+  '0x000000000000000000000000000000000000040c' as const satisfies Address;
 const operatorA =
   '0x000000000000000000000000000000000000050a' as const satisfies Address;
 const operatorB =
   '0x000000000000000000000000000000000000050b' as const satisfies Address;
+const operatorC =
+  '0x000000000000000000000000000000000000050c' as const satisfies Address;
 const payerA =
   '0x000000000000000000000000000000000000060a' as const satisfies Address;
 const payerB =
@@ -1501,6 +1505,55 @@ describe('FIP-0118 adherence test', () => {
   // - same epoch settlement/reassignment is ordered correctly
   it('Attributes volume properly after binding reassignment', async () => {
     const q1 = await app.get(QuartersService).getQuarterByIndex(1);
+    const q2 = await app.get(QuartersService).getQuarterByIndex(2);
+
+    const commonRailOptions = {
+      address: filecoinPayContractA,
+      token: usdfcToken.address,
+      payee: zeroAddress,
+      validator: zeroAddress,
+    } as const;
+
+    const rail1 = {
+      railId: 1n,
+      payer: payerA,
+      operator: operatorA,
+    } as const;
+
+    const rail2 = {
+      railId: 2n,
+      payer: payerA,
+      operator: operatorB,
+    };
+
+    const rail3 = {
+      railId: 3n,
+      payer: payerA,
+      operator: operatorC,
+    } as const;
+
+    const rail4 = {
+      railId: 4n,
+      payer: payerB,
+      operator: operatorA,
+    };
+
+    const rail5 = {
+      railId: 5n,
+      payer: payerB,
+      operator: operatorB,
+    };
+
+    const railCreationLogs = [rail1, rail2, rail3, rail4, rail5].map(
+      (rail, index) => {
+        return railCreatedLog({
+          ...commonRailOptions,
+          ...rail,
+          blockNumber: 2n,
+          logIndex: index,
+        });
+      },
+    );
 
     testFilecoinClient.resetWithLogs([
       pricingParamsUpdatedLog({
@@ -1534,130 +1587,290 @@ describe('FIP-0118 adherence test', () => {
         orchestrator: orchestratorB,
         wallet: orchestratorB,
       }),
-      railCreatedLog({
-        address: filecoinPayContractA,
+      orchestratorAdmittedLog({
+        address: serviceRewardsActor,
         blockNumber: 1n,
         logIndex: 4,
-        railId: 1n,
-        token: usdfcToken.address,
-        payee: zeroAddress,
-        payer: payerA,
-        operator: operatorA,
-        validator: zeroAddress,
+        orchestrator: orchestratorC,
+        wallet: orchestratorC,
       }),
-      railCreatedLog({
-        address: filecoinPayContractA,
-        blockNumber: 1n,
-        logIndex: 5,
-        railId: 2n,
-        token: usdfcToken.address,
-        payee: zeroAddress,
-        payer: payerB,
-        operator: operatorA,
-        validator: zeroAddress,
-      }),
+      ...railCreationLogs,
 
-      // Orch A binds both pairs
+      // Case 1: Bound to A -> settlement 1 -> reassignment to B without inherit
+      // -> settlement 2, all in one epoch. Default non malicient reassignment.
+      // Settlment 1 should count towards A's Q1 volume and settlment 2 towards
+      // B's Q1 volume.
       bindingDeclaredLog({
         address: serviceRewardsActor,
         blockNumber: q1.startEpoch,
         logIndex: 0,
         orchestrator: orchestratorA,
-        operator: operatorA,
-        payer: payerA,
+        operator: rail1.operator,
+        payer: rail1.payer,
       }),
-      bindingDeclaredLog({
-        address: serviceRewardsActor,
+      railSettledLog({
+        address: filecoinPayContractA,
         blockNumber: q1.startEpoch,
         logIndex: 1,
-        orchestrator: orchestratorA,
-        operator: operatorA,
-        payer: payerB,
-      }),
-
-      // Settlements on both pairs when bound to A
-      railSettledLog({
-        address: filecoinPayContractA,
-        blockNumber: q1.startEpoch + 1n,
-        logIndex: 0,
-        railId: 1n,
-        totalSettledAmount: usdfcToken.formatNumericValue(1n),
-        totalNetPayeeAmount: usdfcToken.formatNumericValue(1n),
+        railId: rail1.railId,
+        totalSettledAmount: usdfcToken.formatNumericValue(1),
+        totalNetPayeeAmount: usdfcToken.formatNumericValue(1),
         operatorCommission: 0n,
         networkFee: 0n,
+      }),
+      bindingReassignedLog({
+        address: serviceRewardsActor,
+        blockNumber: q1.startEpoch,
+        logIndex: 2,
+        orchestrator: orchestratorB,
+        operator: rail1.operator,
+        payer: rail1.payer,
+        inherit: false,
+      }),
+      railSettledLog({
+        address: filecoinPayContractA,
+        blockNumber: q1.startEpoch,
+        logIndex: 3,
+        railId: rail1.railId,
+        totalSettledAmount: usdfcToken.formatNumericValue(2),
+        totalNetPayeeAmount: usdfcToken.formatNumericValue(2),
+        operatorCommission: 0n,
+        networkFee: 0n,
+      }),
+
+      // Case 2: Bound to A -> settlement 1 -> reassignment to B with inherit
+      // -> settlement 2, all in one epoch. Default malicient reassignment.
+      // Both settlment 1 and settlment 2 should count towards B's Q1 volume.
+      bindingDeclaredLog({
+        address: serviceRewardsActor,
+        blockNumber: q1.startEpoch + 1n,
+        logIndex: 0,
+        orchestrator: orchestratorA,
+        operator: rail2.operator,
+        payer: rail2.payer,
       }),
       railSettledLog({
         address: filecoinPayContractA,
         blockNumber: q1.startEpoch + 1n,
         logIndex: 1,
-        railId: 2n,
-        totalSettledAmount: usdfcToken.formatNumericValue(10n),
-        totalNetPayeeAmount: usdfcToken.formatNumericValue(10n),
+        railId: rail2.railId,
+        totalSettledAmount: usdfcToken.formatNumericValue(10),
+        totalNetPayeeAmount: usdfcToken.formatNumericValue(10),
         operatorCommission: 0n,
         networkFee: 0n,
       }),
-
-      // Reassigments on the same epoch, payer B volume gets inherited
       bindingReassignedLog({
         address: serviceRewardsActor,
         blockNumber: q1.startEpoch + 1n,
         logIndex: 2,
         orchestrator: orchestratorB,
-        operator: operatorA,
-        payer: payerA,
-        inherit: false,
-      }),
-      bindingReassignedLog({
-        address: serviceRewardsActor,
-        blockNumber: q1.startEpoch + 1n,
-        logIndex: 3,
-        orchestrator: orchestratorB,
-        operator: operatorA,
-        payer: payerB,
+        operator: rail2.operator,
+        payer: rail2.payer,
         inherit: true,
       }),
-
-      // Same epoch settlements after reassignemnt to B
       railSettledLog({
         address: filecoinPayContractA,
         blockNumber: q1.startEpoch + 1n,
-        logIndex: 4,
-        railId: 1n,
-        totalSettledAmount: usdfcToken.formatNumericValue(100n),
-        totalNetPayeeAmount: usdfcToken.formatNumericValue(100n),
+        logIndex: 3,
+        railId: rail2.railId,
+        totalSettledAmount: usdfcToken.formatNumericValue(20),
+        totalNetPayeeAmount: usdfcToken.formatNumericValue(20),
         operatorCommission: 0n,
         networkFee: 0n,
       }),
+
+      // Case 3: Bound to A in Q1 -> settlement 1 in Q2 -> reassigned to B with
+      // inherit -> settlement 2. Special pair held longer case. Settlment 1
+      // should count towards A's Q2 volume and settlment 2 towards B's Q2
+      // volume.
+      bindingDeclaredLog({
+        address: serviceRewardsActor,
+        blockNumber: q1.startEpoch + 2n,
+        logIndex: 0,
+        orchestrator: orchestratorA,
+        operator: rail3.operator,
+        payer: rail3.payer,
+      }),
       railSettledLog({
         address: filecoinPayContractA,
-        blockNumber: q1.startEpoch + 1n,
+        blockNumber: q2.startEpoch + 2n,
+        logIndex: 1,
+        railId: rail3.railId,
+        totalSettledAmount: usdfcToken.formatNumericValue(100),
+        totalNetPayeeAmount: usdfcToken.formatNumericValue(100),
+        operatorCommission: 0n,
+        networkFee: 0n,
+      }),
+      bindingReassignedLog({
+        address: serviceRewardsActor,
+        blockNumber: q2.startEpoch + 2n,
+        logIndex: 2,
+        orchestrator: orchestratorB,
+        operator: rail3.operator,
+        payer: rail3.payer,
+        inherit: true,
+      }),
+      railSettledLog({
+        address: filecoinPayContractA,
+        blockNumber: q2.startEpoch + 2n,
+        logIndex: 3,
+        railId: rail3.railId,
+        totalSettledAmount: usdfcToken.formatNumericValue(200),
+        totalNetPayeeAmount: usdfcToken.formatNumericValue(200),
+        operatorCommission: 0n,
+        networkFee: 0n,
+      }),
+
+      // Case 4: Bound to C -> settlement 1 -> released -> bound to A ->
+      // settlement 2 -> reassigned to B with inherit -> settlement 3 all in one
+      // epoch. Maleficient reassignment honoring previous bindings.
+      // Settlement 1 should count towards C's volume, settlments 2 and 3
+      // towards B's volume, A gets nothing.
+      bindingDeclaredLog({
+        address: serviceRewardsActor,
+        blockNumber: q1.startEpoch + 3n,
+        logIndex: 0,
+        orchestrator: orchestratorC,
+        operator: rail4.operator,
+        payer: rail4.payer,
+      }),
+      railSettledLog({
+        address: filecoinPayContractA,
+        blockNumber: q1.startEpoch + 3n,
+        logIndex: 1,
+        railId: rail4.railId,
+        totalSettledAmount: usdfcToken.formatNumericValue(3000),
+        totalNetPayeeAmount: usdfcToken.formatNumericValue(3000),
+        networkFee: 0n,
+        operatorCommission: 0n,
+      }),
+      bindingCanceledLog({
+        address: serviceRewardsActor,
+        blockNumber: q1.startEpoch + 3n,
+        logIndex: 2,
+        payer: rail4.payer,
+        operator: rail4.operator,
+        orchestrator: orchestratorC,
+      }),
+      bindingDeclaredLog({
+        address: serviceRewardsActor,
+        blockNumber: q1.startEpoch + 3n,
+        logIndex: 3,
+        orchestrator: orchestratorA,
+        operator: rail4.operator,
+        payer: rail4.payer,
+      }),
+      railSettledLog({
+        address: filecoinPayContractA,
+        blockNumber: q1.startEpoch + 3n,
+        logIndex: 4,
+        railId: rail4.railId,
+        totalSettledAmount: usdfcToken.formatNumericValue(1000),
+        totalNetPayeeAmount: usdfcToken.formatNumericValue(1000),
+        networkFee: 0n,
+        operatorCommission: 0n,
+      }),
+      bindingReassignedLog({
+        address: serviceRewardsActor,
+        blockNumber: q1.startEpoch + 3n,
         logIndex: 5,
-        railId: 2n,
-        totalSettledAmount: usdfcToken.formatNumericValue(1000n),
-        totalNetPayeeAmount: usdfcToken.formatNumericValue(1000n),
+        orchestrator: orchestratorB,
+        operator: rail4.operator,
+        payer: rail4.payer,
+        inherit: true,
+      }),
+      railSettledLog({
+        address: filecoinPayContractA,
+        blockNumber: q1.startEpoch + 3n,
+        logIndex: 6,
+        railId: rail4.railId,
+        totalSettledAmount: usdfcToken.formatNumericValue(2000),
+        totalNetPayeeAmount: usdfcToken.formatNumericValue(2000),
+        networkFee: 0n,
+        operatorCommission: 0n,
+      }),
+
+      // Case 5: Settlement 1 in Q1 -> bound to A during Q1 cutoff -> reassigned
+      // to B during Q1 cutoff with inherit -> settlement 2 in Q2. No one should
+      // get settlement 1 and settlement 2 should count towards B's Q2 volume.
+      railSettledLog({
+        address: filecoinPayContractA,
+        blockNumber: q1.endEpoch,
+        logIndex: 0,
+        railId: rail5.railId,
+        totalSettledAmount: usdfcToken.formatNumericValue(10000),
+        totalNetPayeeAmount: usdfcToken.formatNumericValue(10000),
+        operatorCommission: 0n,
+        networkFee: 0n,
+      }),
+      bindingDeclaredLog({
+        address: serviceRewardsActor,
+        blockNumber: q1.endEpoch,
+        logIndex: 1,
+        orchestrator: orchestratorA,
+        operator: rail5.operator,
+        payer: rail5.payer,
+      }),
+      bindingReassignedLog({
+        address: serviceRewardsActor,
+        blockNumber: q1.endEpoch,
+        logIndex: 2,
+        orchestrator: orchestratorB,
+        operator: rail5.operator,
+        payer: rail5.payer,
+        inherit: true,
+      }),
+      railSettledLog({
+        address: filecoinPayContractA,
+        blockNumber: q2.startEpoch + 4n,
+        logIndex: 0,
+        railId: rail5.railId,
+        totalSettledAmount: usdfcToken.formatNumericValue(20000),
+        totalNetPayeeAmount: usdfcToken.formatNumericValue(20000),
         operatorCommission: 0n,
         networkFee: 0n,
       }),
     ]);
 
-    testFilecoinClient.forwardTo(q1.endEpoch + 1n);
+    testFilecoinClient.forwardTo(q2.endEpoch + 1n);
 
     await app.get(IndexerOrchestratorService).execute();
 
-    const responseA = await request(app.getHttpServer())
+    const responseQ1A = await request(app.getHttpServer())
       .get(`/volume/1/${orchestratorA}`)
       .expect(200);
-    const responseB = await request(app.getHttpServer())
+    const responseQ1B = await request(app.getHttpServer())
       .get(`/volume/1/${orchestratorB}`)
       .expect(200);
+    const responseQ1C = await request(app.getHttpServer())
+      .get(`/volume/1/${orchestratorC}`)
+      .expect(200);
+    const responseQ2A = await request(app.getHttpServer())
+      .get(`/volume/2/${orchestratorA}`)
+      .expect(200);
+    const responseQ2B = await request(app.getHttpServer())
+      .get(`/volume/2/${orchestratorB}`)
+      .expect(200);
 
-    expect(responseA.body).toMatchObject({
-      stablecoinVolumeAttoUsd: usdfcToken.formatNumericValue(1n).toString(),
-      volumeAttoUsd: usdfcToken.formatNumericValue(1n).toString(),
+    expect(responseQ1A.body).toMatchObject({
+      stablecoinVolumeAttoUsd: usdfcToken.formatNumericValue(1).toString(),
+      volumeAttoUsd: usdfcToken.formatNumericValue(1).toString(),
     });
-    expect(responseB.body).toMatchObject({
-      stablecoinVolumeAttoUsd: usdfcToken.formatNumericValue(1110n).toString(),
-      volumeAttoUsd: usdfcToken.formatNumericValue(1110n).toString(),
+    expect(responseQ1B.body).toMatchObject({
+      stablecoinVolumeAttoUsd: usdfcToken.formatNumericValue(3032).toString(),
+      volumeAttoUsd: usdfcToken.formatNumericValue(3032).toString(),
+    });
+    expect(responseQ1C.body).toMatchObject({
+      stablecoinVolumeAttoUsd: usdfcToken.formatNumericValue(3000).toString(),
+      volumeAttoUsd: usdfcToken.formatNumericValue(3000).toString(),
+    });
+    expect(responseQ2A.body).toMatchObject({
+      stablecoinVolumeAttoUsd: usdfcToken.formatNumericValue(100).toString(),
+      volumeAttoUsd: usdfcToken.formatNumericValue(100).toString(),
+    });
+    expect(responseQ2B.body).toMatchObject({
+      stablecoinVolumeAttoUsd: usdfcToken.formatNumericValue(20200).toString(),
+      volumeAttoUsd: usdfcToken.formatNumericValue(20200).toString(),
     });
   });
 
