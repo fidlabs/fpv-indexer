@@ -5,7 +5,12 @@ import { ERC20Metadata } from '@/lib/types';
 import { ConfigSeedService } from '@/services/config-seed.service';
 import { IndexerOrchestratorService } from '@/services/indexer-orchestrator.service';
 import { QuartersService } from '@/services/quarters.service';
-import { INestApplication } from '@nestjs/common';
+import {
+  INestApplication,
+  StandardSchemaSerializerInterceptor,
+  StandardSchemaValidationPipe,
+} from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { BigNumber } from 'bignumber.js';
 import { range } from 'es-toolkit';
@@ -262,6 +267,10 @@ describe('FIP-0118 adherence test', () => {
       .compile();
 
     app = module.createNestApplication();
+    app.useGlobalInterceptors(
+      new StandardSchemaSerializerInterceptor(app.get(Reflector)),
+    );
+    app.useGlobalPipes(new StandardSchemaValidationPipe());
     await app.init();
   });
 
@@ -280,7 +289,7 @@ describe('FIP-0118 adherence test', () => {
   // - ERC20 normalization
   // - totalSettledAmount is used for settlements calculation
   it('ERC20 decimals are normalized to atto-USD', async () => {
-    const q1 = app.get(QuartersService).getQuarterByIndex(1);
+    const q1 = await app.get(QuartersService).getQuarterByIndex(1);
 
     testFilecoinClient.resetWithLogs([
       // bootstrap
@@ -385,7 +394,7 @@ describe('FIP-0118 adherence test', () => {
   // -  Total amount (net + commision + fee) for one time payments is used for
   //    volume calculations
   it('Gross total is used for one time payments', async () => {
-    const q1 = app.get(QuartersService).getQuarterByIndex(1);
+    const q1 = await app.get(QuartersService).getQuarterByIndex(1);
 
     testFilecoinClient.resetWithLogs([
       // bootstrap
@@ -470,7 +479,7 @@ describe('FIP-0118 adherence test', () => {
   // - Settlement at quarter startEpoch - 1 and quarter endEpoch + 1 are
   //   excluded from quarter volume
   it('Settlement quarter boundaries are respected', async () => {
-    const q2 = app.get(QuartersService).getQuarterByIndex(2);
+    const q2 = await app.get(QuartersService).getQuarterByIndex(2);
 
     testFilecoinClient.resetWithLogs([
       // bootstrap
@@ -589,7 +598,7 @@ describe('FIP-0118 adherence test', () => {
   // - Same payer with different operators must remain separate
   // - Same operator with different payers must remain separate
   it('Settlements across multiple rails are aggregated', async () => {
-    const q1 = app.get(QuartersService).getQuarterByIndex(1);
+    const q1 = await app.get(QuartersService).getQuarterByIndex(1);
 
     testFilecoinClient.resetWithLogs([
       // bootstrap
@@ -736,8 +745,8 @@ describe('FIP-0118 adherence test', () => {
   // - Exclude non-admitted Filecoin Pay contracts from volume
   // - Verify admission/removal applies only from the next quarter boundary
   it('Admitted lists are respected', async () => {
-    const q1 = app.get(QuartersService).getQuarterByIndex(1);
-    const q2 = app.get(QuartersService).getQuarterByIndex(2);
+    const q1 = await app.get(QuartersService).getQuarterByIndex(1);
+    const q2 = await app.get(QuartersService).getQuarterByIndex(2);
 
     testFilecoinClient.resetWithLogs([
       // bootstrap
@@ -952,7 +961,7 @@ describe('FIP-0118 adherence test', () => {
   // Tests:
   // - settlements made on unbound pairs do not count towards quarterly volume
   it('Excludes unbound settlements and one time payments', async () => {
-    const q1 = app.get(QuartersService).getQuarterByIndex(1);
+    const q1 = await app.get(QuartersService).getQuarterByIndex(1);
 
     testFilecoinClient.resetWithLogs([
       // bootstrap
@@ -1080,8 +1089,8 @@ describe('FIP-0118 adherence test', () => {
   //   orchestrator if registration happens after settlement but before
   //   registration cutoff
   it('Back-covers unbound volume after mid-quarter registration', async () => {
-    const q1 = app.get(QuartersService).getQuarterByIndex(1);
-    const q2 = app.get(QuartersService).getQuarterByIndex(2);
+    const q1 = await app.get(QuartersService).getQuarterByIndex(1);
+    const q2 = await app.get(QuartersService).getQuarterByIndex(2);
 
     testFilecoinClient.resetWithLogs([
       // bootstrap
@@ -1207,8 +1216,8 @@ describe('FIP-0118 adherence test', () => {
   //   volume of quarter registration was made in
   // - they are properly included in next quarter
   it('Excludes volume if registration was made in REGISTRATION_CUTOFF period', async () => {
-    const q1 = app.get(QuartersService).getQuarterByIndex(1);
-    const q2 = app.get(QuartersService).getQuarterByIndex(2);
+    const q1 = await app.get(QuartersService).getQuarterByIndex(1);
+    const q2 = await app.get(QuartersService).getQuarterByIndex(2);
 
     testFilecoinClient.resetWithLogs([
       // bootstrap
@@ -1353,7 +1362,7 @@ describe('FIP-0118 adherence test', () => {
   // - another orchestrator can bind released pairs
   // - same epoch settlement/release/binding is ordered correctly
   it('Attributes volume properly after orchestrator removal', async () => {
-    const q1 = app.get(QuartersService).getQuarterByIndex(1);
+    const q1 = await app.get(QuartersService).getQuarterByIndex(1);
 
     testFilecoinClient.resetWithLogs([
       pricingParamsUpdatedLog({
@@ -1491,7 +1500,7 @@ describe('FIP-0118 adherence test', () => {
   // - another orchestrator can bind released pairs
   // - same epoch settlement/reassignment is ordered correctly
   it('Attributes volume properly after binding reassignment', async () => {
-    const q1 = app.get(QuartersService).getQuarterByIndex(1);
+    const q1 = await app.get(QuartersService).getQuarterByIndex(1);
 
     testFilecoinClient.resetWithLogs([
       pricingParamsUpdatedLog({
@@ -1657,7 +1666,7 @@ describe('FIP-0118 adherence test', () => {
   // - another orchestrator can bind released pairs
   // - same epoch settlement/cancellation is ordered correctly
   it('Attributes volume properly after binding cancellation', async () => {
-    const q1 = app.get(QuartersService).getQuarterByIndex(1);
+    const q1 = await app.get(QuartersService).getQuarterByIndex(1);
 
     testFilecoinClient.resetWithLogs([
       pricingParamsUpdatedLog({
@@ -1791,7 +1800,7 @@ describe('FIP-0118 adherence test', () => {
   // - first qualifying print strictly after settlement must price it even if
   //   there are multiple prints in the same epoch
   it('Matches prints strictly after settlement', async () => {
-    const q1 = app.get(QuartersService).getQuarterByIndex(1);
+    const q1 = await app.get(QuartersService).getQuarterByIndex(1);
 
     const transfers = range(0, 8).map((index) => {
       return transferLog({
@@ -1947,8 +1956,8 @@ describe('FIP-0118 adherence test', () => {
   //   by first qualyifing print in subsequent quarters
   // - no settlement should be counted twice
   it('Pending FIL volume rolls forward', async () => {
-    const q1 = app.get(QuartersService).getQuarterByIndex(1);
-    const q2 = app.get(QuartersService).getQuarterByIndex(2);
+    const q1 = await app.get(QuartersService).getQuarterByIndex(1);
+    const q2 = await app.get(QuartersService).getQuarterByIndex(2);
 
     const seedTransfers = range(0, 5).map((index) => {
       return transferLog({
@@ -2122,7 +2131,7 @@ describe('FIP-0118 adherence test', () => {
   // - Seed prints do not price volume
   // - First qualifying print after seed prices all pending volume
   it('Seed prints do not price volume', async () => {
-    const q1 = app.get(QuartersService).getQuarterByIndex(1);
+    const q1 = await app.get(QuartersService).getQuarterByIndex(1);
 
     const transfers = range(0, 6).map((index) => {
       return transferLog({
@@ -2251,7 +2260,7 @@ describe('FIP-0118 adherence test', () => {
   //   to avoid division, not arithmetic mean.
   it('Calculates seed median properly', async () => {
     const priceBandBps = 0n;
-    const q1 = app.get(QuartersService).getQuarterByIndex(1);
+    const q1 = await app.get(QuartersService).getQuarterByIndex(1);
 
     const seedTransfers = range(0, 5).map((index) => {
       return transferLog({
@@ -2423,8 +2432,8 @@ describe('FIP-0118 adherence test', () => {
     const minLotAlphaNum = 1n;
     const minLotAlphaDen = 10n;
     const priceBandBps = 0n;
-    const q1 = app.get(QuartersService).getQuarterByIndex(1);
-    const q2 = app.get(QuartersService).getQuarterByIndex(2);
+    const q1 = await app.get(QuartersService).getQuarterByIndex(1);
+    const q2 = await app.get(QuartersService).getQuarterByIndex(2);
 
     const transferLogs = [
       // Q1
@@ -2666,7 +2675,7 @@ describe('FIP-0118 adherence test', () => {
     const initialLotUsd = 10n;
     const upperPriceBand = usdfcToken.formatNumericValue(13);
     const lowerPriceBand = usdfcToken.formatNumericValue(7);
-    const q1 = app.get(QuartersService).getQuarterByIndex(1);
+    const q1 = await app.get(QuartersService).getQuarterByIndex(1);
 
     const usdfcRailLog = railCreatedLog({
       address: filecoinPayContractA,
@@ -2883,7 +2892,7 @@ describe('FIP-0118 adherence test', () => {
   // - same rules apply after seeding
   it('Filters prints with non admitted contracts or tokens', async () => {
     const indexerOrchestrator = app.get(IndexerOrchestratorService);
-    const q1 = app.get(QuartersService).getQuarterByIndex(1);
+    const q1 = await app.get(QuartersService).getQuarterByIndex(1);
     const auctionClaim = filToken.formatNumericValue(1n);
 
     testFilecoinClient.resetWithLogs([
@@ -3139,7 +3148,7 @@ describe('FIP-0118 adherence test', () => {
   // - corrections are respected
   it('Collects orchestrators quarterly volume', async () => {
     const indexerOrchestrator = app.get(IndexerOrchestratorService);
-    const q2 = app.get(QuartersService).getQuarterByIndex(2);
+    const q2 = await app.get(QuartersService).getQuarterByIndex(2);
 
     testFilecoinClient.resetWithLogs([
       orchestratorAdmittedLog({
@@ -3231,7 +3240,7 @@ describe('FIP-0118 adherence test', () => {
   // - pairs remain unbound after re-admission without explicit binding
   it('Allows orchestrator re-admission', async () => {
     const indexerOrchestrator = app.get(IndexerOrchestratorService);
-    const q1 = app.get(QuartersService).getQuarterByIndex(1);
+    const q1 = await app.get(QuartersService).getQuarterByIndex(1);
 
     testFilecoinClient.resetWithLogs([
       pricingParamsUpdatedLog({
