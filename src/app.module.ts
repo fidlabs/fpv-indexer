@@ -17,8 +17,8 @@ import { Module, type FactoryProvider } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { createObserveModule } from '@nestjs/observe';
 import { ScheduleModule } from '@nestjs/schedule';
-import { filecoin } from 'viem/chains';
 import { GateController } from './controllers/gate.controller';
+import { PaymentsController } from './controllers/payments.controller';
 import { ServiceOrchestratorsController } from './controllers/service-orchestrators.controller';
 import { VolumeController } from './controllers/volume.controller';
 import { ServiceRewardsActorIndexer } from './indexers/service-rewards-actor.indexer';
@@ -28,10 +28,9 @@ import { ConfigSeedService } from './services/config-seed.service';
 import { ERC20TokenInfoService } from './services/erc-20-token-info.service';
 import { FilfoxApiService } from './services/filfox-api.service';
 import { GateCheckService } from './services/gate-check.service';
+import { PaymentsService } from './services/payments.service';
 import { ServiceOrchestratorService } from './services/service-orchestrator.service';
 import { VolumeCalculationService } from './services/volume-calculation.service';
-import { PaymentsService } from './services/payments.service';
-import { PaymentsController } from './controllers/payments.controller';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -42,7 +41,7 @@ const recentNodeClientProvider: FactoryProvider<FilecoinPublicClient> = {
   provide: RECENT_NODE_CLIENT,
   useFactory: (configService: ConfigService<ConfigShape, true>) => {
     return createClientForChain({
-      chainId: configService.get('CHAIN_ID') ?? filecoin.id,
+      chainId: configService.get('CHAIN_ID'),
       rpcUrl: configService.get('RECENT_RPC_URL'),
       authToken: configService.get('RECENT_RPC_AUTH_TOKEN'),
     });
@@ -54,7 +53,7 @@ const archiveNodeClientProvider: FactoryProvider<FilecoinPublicClient> = {
   provide: ARCHIVE_NODE_CLIENT,
   useFactory: (configService: ConfigService<ConfigShape, true>) => {
     return createClientForChain({
-      chainId: configService.get('CHAIN_ID') ?? filecoin.id,
+      chainId: configService.get('CHAIN_ID'),
       rpcUrl: configService.get('ARCHIVE_RPC_URL'),
       authToken: configService.get('ARCHIVE_RPC_AUTH_TOKEN'),
     });

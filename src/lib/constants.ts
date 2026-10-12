@@ -28,7 +28,7 @@ const evmAddress = z.custom<Address>((value) => {
 }, 'Invalid EVM address');
 
 export const CONFIG_SCHEMA = z.object({
-  CHAIN_ID: supportedChainId.nullish(),
+  CHAIN_ID: supportedChainId.default(filecoin.id),
   INTERVAL_CRON_EXPRESSION: z.string().nullish(),
   FINALIZED_HEIGHT_MAX_DIFFERENCE: z.coerce
     .bigint()

@@ -137,6 +137,9 @@ export const indexerStatusSchema = z.object({
   version: z.string().meta({
     description: 'Instance version',
   }),
+  chainId: z.number().meta({
+    description: 'Chain ID',
+  }),
   indexedUpTo: epochOutput.meta({
     description:
       'Lowest epoch number any of the indexed contract is indexed to',
