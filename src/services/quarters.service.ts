@@ -5,6 +5,7 @@ import {
   OrchestratorQuarterlyVolumeParameters,
   OrchestratorQuarterlyVolumePosting,
   Quarter,
+  QuarterlyVolumePostings,
   QuarterNumberFilter,
   QuarterParameters,
 } from '@/lib/schemas';
@@ -417,6 +418,48 @@ export class QuartersService {
       admittedFilecoinPayContractAddresses: quarterFilecoinPayContracts.map(
         (c) => c.contract_address as Address,
       ),
+    };
+  }
+
+  public async getQuarterlyVolumePostings({
+    quarterNumber,
+  }: QuarterNumberFilter): Promise<QuarterlyVolumePostings> {
+    type Posting = QuarterlyVolumePostings['postings'][number];
+
+    const postingResults = await db
+      .selectFrom('service_orchestrator_quarterly_volume')
+      .select([
+        'service_orchestrator_id',
+        'volume_atto_usd',
+        'is_correction',
+        'posting_epoch',
+        'posting_tx_hash',
+      ])
+      .where('quarter_num', '=', quarterNumber.toNumber())
+      .distinctOn('service_orchestrator_id')
+      .orderBy('service_orchestrator_id')
+      .orderBy('posting_epoch', 'desc')
+      .orderBy('posting_log_index', 'desc')
+      .execute();
+
+    const postings = postingResults.map((result) => {
+      return {
+        serviceOrchestrator: result.service_orchestrator_id,
+        volumeAttoUsd: numericToBigInt(result.volume_atto_usd),
+        correction: result.is_correction,
+        postingEpoch: numericToBigInt(result.posting_epoch),
+        postingTxHash: result.posting_tx_hash,
+      } satisfies Posting;
+    });
+
+    const aggregatedVolumeAttoUsd = postings.reduce((total, posting) => {
+      return total + posting.volumeAttoUsd;
+    }, 0n);
+
+    return {
+      quarterNumber: quarterNumber.toNumber(),
+      aggregatedVolumeAttoUsd,
+      postings,
     };
   }
 
