@@ -30,10 +30,18 @@ const evmAddress = z.custom<Address>((value) => {
 export const CONFIG_SCHEMA = z.object({
   CHAIN_ID: supportedChainId.nullish(),
   INTERVAL_CRON_EXPRESSION: z.string().nullish(),
-  BATCH_BLOCK_SIZE: z.coerce.number().int().min(1).nullish(),
+  FINALIZED_HEIGHT_MAX_DIFFERENCE: z.coerce
+    .bigint()
+    .min(0n)
+    .max(900n)
+    .nullish(),
+  BATCH_BLOCK_SIZE: z.coerce
+    .bigint()
+    .min(1n)
+    .default(2n * 60n * 12n),
   ARCHIVE_RPC_URL: z.url(),
   ARCHIVE_RPC_AUTH_TOKEN: z.string().nullish(),
-  ARCHIVE_RPC_THRESHOLD: z.coerce.number().int().min(0),
+  ARCHIVE_RPC_THRESHOLD: z.coerce.bigint().min(0n),
   RECENT_RPC_URL: z.url().nullish(),
   RECENT_RPC_AUTH_TOKEN: z.string().nullish(),
   ACTIVATION_EPOCH: z.coerce.bigint().min(0n),

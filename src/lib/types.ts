@@ -10,11 +10,37 @@ import type { CONFIG_SCHEMA, SUPPORTED_CHAINS } from './constants';
 
 type SupportedChain = (typeof SUPPORTED_CHAINS)[number];
 
+export type FilecoinCid = {
+  '/': string;
+};
+
+export type FilecoinFinalizedTipset = {
+  Cids: FilecoinCid[];
+  Blocks: unknown[];
+  Height: number;
+};
+
+export type FilecoinRpcSchema = [
+  {
+    Method: 'Filecoin.ChainGetFinalizedTipSet';
+    Parameters: [];
+    ReturnType: FilecoinFinalizedTipset;
+  },
+];
+
+export type FilecoinActions = {
+  filecoin: {
+    chainGetFinalizedTipSet: () => Promise<FilecoinFinalizedTipset>;
+  };
+};
+
 export type FilecoinPublicClient = PublicClient<
   HttpTransport,
   SupportedChain,
-  undefined
->;
+  undefined,
+  FilecoinRpcSchema
+> &
+  FilecoinActions;
 
 export type ConfigShape = zodInfer<typeof CONFIG_SCHEMA>;
 
