@@ -441,6 +441,15 @@ export type VolumePostingOrCorrection = z.input<
   typeof volumePostingOrCorrectionSchema
 >;
 
+export const quarterlyVolumePostingsSchema = z.object({
+  quarterNumber,
+  aggregatedVolumeAttoUsd: uintOutput,
+  postings: z.array(volumePostingOrCorrectionSchema),
+});
+export type QuarterlyVolumePostings = z.input<
+  typeof quarterlyVolumePostingsSchema
+>;
+
 export const orchestratorQuarterlyVolumePostingSchema = z.object({
   serviceOrchestrator: evmAddress.meta({
     description: `Identifying address of Service Orchestrator.`,
@@ -493,6 +502,7 @@ export const gateTargetSchema = z.object({
       'Epoch at which last check occured. Null if no checks occured.',
     example: 1234n.toString(),
   }),
+  capReached: z.boolean(),
   targetAttoUsd: uintOutput.meta({
     description: 'Calculated gate target in atto USD.',
     example: 3_500_000_000_000_000_000_000n.toString(),
@@ -502,7 +512,7 @@ export const gateTargetSchema = z.object({
     example: 3_500,
   }),
 });
-export type GateTarge = z.input<typeof gateTargetSchema>;
+export type GateTarget = z.input<typeof gateTargetSchema>;
 
 export const paginatedPaymentsListSchema = z
   .object({

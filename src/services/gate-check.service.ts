@@ -1,5 +1,5 @@
 import { db } from '@/db/db';
-import { GateTarge, GateTargetParameters } from '@/lib/schemas';
+import { GateTarget, GateTargetParameters } from '@/lib/schemas';
 import { divideBigInt, numericToBigInt } from '@/lib/utils';
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 
@@ -10,7 +10,7 @@ export class GateCheckService {
 
   public async calculateGateTarget({
     atEpoch,
-  }: GateTargetParameters): Promise<GateTarge> {
+  }: GateTargetParameters): Promise<GateTarget> {
     let paramsQuery = db
       .selectFrom('stream_weight_actor_parameters')
       .select(['base_atto_usd', 'step_ratio'])
@@ -54,10 +54,11 @@ export class GateCheckService {
     const scale = 10n ** 18n;
     const denominator = scale ** steps;
 
-    if (denominator === 0n) {
+    if (steps >= 8 || denominator === 0n) {
       return {
         atEpoch: atEpoch ?? null,
         lastCheckEpoch,
+        capReached: steps >= 8,
         targetAttoUsd: 0n,
         targetUsd: 0,
       };
@@ -76,6 +77,7 @@ export class GateCheckService {
       lastCheckEpoch: lastGateCheckResult
         ? numericToBigInt(lastGateCheckResult.epoch)
         : null,
+      capReached: false,
       targetAttoUsd,
       targetUsd: divideBigInt(targetAttoUsd, scale, 2),
     };
