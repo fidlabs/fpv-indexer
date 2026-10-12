@@ -442,9 +442,15 @@ export type VolumePostingOrCorrection = z.input<
 >;
 
 export const quarterlyVolumePostingsSchema = z.object({
-  quarterNumber,
-  aggregatedVolumeAttoUsd: uintOutput,
-  postings: z.array(volumePostingOrCorrectionSchema),
+  quarterNumber: quarterNumber.meta({
+    description: 'Quarter number.',
+  }),
+  aggregatedVolumeAttoUsd: uintOutput.meta({
+    description: 'Sum of all orchestrators final postings.',
+  }),
+  postings: z.array(volumePostingOrCorrectionSchema).meta({
+    description: 'Orchestrators final postings list in given quarter.',
+  }),
 });
 export type QuarterlyVolumePostings = z.input<
   typeof quarterlyVolumePostingsSchema
