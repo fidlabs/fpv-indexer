@@ -70,8 +70,21 @@ describe('AbstractIndexer', () => {
     );
     (db.transaction as Mock).mockReturnValue({ execute });
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/require-await
-    const recentClient = { getBlockNumber: async () => 2n } as any;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const recentClient = {
+      // eslint-disable-next-line @typescript-eslint/require-await
+      getBlockNumber: async () => 2n,
+      filecoin: {
+        // eslint-disable-next-line @typescript-eslint/require-await
+        chainGetFinalizedTipSet: async () => {
+          return {
+            Cids: [],
+            Blocks: [],
+            Height: 2,
+          };
+        },
+      },
+    } as any;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const config = { get: vi.fn(() => undefined) } as any;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument

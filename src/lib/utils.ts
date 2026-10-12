@@ -1,14 +1,20 @@
 import { BigNumber } from 'bignumber.js';
-import { createPublicClient, extractChain, http } from 'viem';
+import { createPublicClient, extractChain, http, rpcSchema } from 'viem';
 import { prettifyError } from 'zod';
 import { CONFIG_SCHEMA, SUPPORTED_CHAINS } from './constants';
-import type { ConfigShape } from './types';
+import type {
+  ConfigShape,
+  FilecoinPublicClient,
+  FilecoinRpcSchema,
+} from './types';
 
 export interface CreateClientForChainParameters {
   chainId: (typeof SUPPORTED_CHAINS)[number]['id'];
   rpcUrl?: string | null;
   authToken?: string | null;
 }
+
+const filecoinRpcSchema = rpcSchema<FilecoinRpcSchema>();
 
 export class StrictMap<K, V> extends Map<K, V> {
   override get(key: K): V {
@@ -38,23 +44,37 @@ export function createClientForChain({
   chainId,
   rpcUrl,
   authToken,
-}: CreateClientForChainParameters) {
+}: CreateClientForChainParameters): FilecoinPublicClient {
   const chain = extractChain({ chains: SUPPORTED_CHAINS, id: chainId });
 
-  return createPublicClient({
-    chain: chain,
-    transport: http(rpcUrl ?? undefined, {
-      fetchOptions:
-        typeof authToken === 'string' && authToken !== ''
-          ? {
-              headers: {
-                Authorization: `Bearer ${authToken}`,
-              },
-            }
-          : undefined,
-      timeout: 60_000,
-    }),
+  const transport = http(rpcUrl ?? undefined, {
+    fetchOptions:
+      typeof authToken === 'string' && authToken !== ''
+        ? {
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+            },
+          }
+        : undefined,
+    timeout: 60_000,
   });
+
+  const client = createPublicClient({
+    chain,
+    transport,
+    rpcSchema: filecoinRpcSchema,
+  }).extend((client) => ({
+    filecoin: {
+      chainGetFinalizedTipSet() {
+        return client.request({
+          method: 'Filecoin.ChainGetFinalizedTipSet',
+          params: [],
+        });
+      },
+    },
+  }));
+
+  return client;
 }
 
 export function divideBigInt(
