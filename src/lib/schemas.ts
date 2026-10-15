@@ -318,6 +318,9 @@ export type ServiceOrchestratorsList = z.input<
 >;
 
 export const pricingPeriodSchema = z.object({
+  auctionTransactionHash: txHash.meta({
+    description: 'Hash of transaction that created this pricing period.',
+  }),
   startEpoch: epochOutput.meta({
     description: 'Epoch from which pricing period applies (inclusive).',
     example: '110',
@@ -327,11 +330,13 @@ export const pricingPeriodSchema = z.object({
     example: 0,
   }),
   endEpoch: epochOutput.meta({
-    description: 'Epoch to which pricing period applies (inclusive).',
+    description: `Epoch to which pricing period applies (inclusive). Also epoch 
+      at which fee auction that created this pricing period occured.`,
     example: '120',
   }),
   endLogIndex: logIndex.meta({
-    description: 'Log index to which pricing period applies (inclusive).',
+    description: `Log index to which pricing period applies (inclusive). Also  
+      log index at which fee auction that created this pricing period occured.`,
     example: 10,
   }),
   lotAttoUsd: uintOutput.meta({
@@ -531,7 +536,7 @@ export const paginatedPaymentsListSchema = z
         epoch: epochOutput,
         logIndex: z.number().int().min(0),
         transactionHash: z.string().nonempty(),
-        railId: z.bigint().min(1n).pipe(bigIntToStringCodec),
+        railId: z.bigint().pipe(bigIntToStringCodec),
         payer: z.string().nonempty(),
         payee: z.string().nonempty(),
         operator: z.string().nonempty(),
