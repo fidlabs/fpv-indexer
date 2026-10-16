@@ -95,6 +95,7 @@ export class PaymentsService {
                   .as('start_log_index'),
                 'epoch as end_epoch',
                 'log_index as end_log_index',
+                'qp.claim_tx_hash',
                 'qp.lot_atto_usd',
                 'qp.claim_atto_fil',
                 eb('lot_atto_usd', '/', eb.ref('claim_atto_fil')).as(
@@ -202,6 +203,7 @@ export class PaymentsService {
           'pp.start_log_index as pricing_period_start_log_index',
           'pp.end_epoch as pricing_period_end_epoch',
           'pp.end_log_index as pricing_period_end_log_index',
+          'pp.claim_tx_hash as pricing_period_tx_hash',
           'pp.lot_atto_usd as pricing_period_lot_atto_usd',
           'pp.claim_atto_fil as pricing_period_claim_atto_fil',
           'pp.implied_rate as pricing_period_implied_rate',
@@ -324,6 +326,7 @@ export class PaymentsService {
       }
 
       const pricingPeriod =
+        result.pricing_period_tx_hash !== null &&
         result.pricing_period_start_epoch !== null &&
         result.pricing_period_start_log_index !== null &&
         result.pricing_period_end_epoch !== null &&
@@ -332,6 +335,7 @@ export class PaymentsService {
         result.pricing_period_claim_atto_fil !== null &&
         result.pricing_period_implied_rate !== null
           ? ({
+              auctionTransactionHash: result.pricing_period_tx_hash,
               startEpoch: numericToBigInt(result.pricing_period_start_epoch),
               startLogIndex: parseInt(
                 result.pricing_period_start_log_index.toString(),

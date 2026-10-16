@@ -318,6 +318,9 @@ export type ServiceOrchestratorsList = z.input<
 >;
 
 export const pricingPeriodSchema = z.object({
+  auctionTransactionHash: txHash.meta({
+    description: 'Hash of transaction that created this pricing period.',
+  }),
   startEpoch: epochOutput.meta({
     description: 'Epoch from which pricing period applies (inclusive).',
     example: '110',
@@ -327,11 +330,13 @@ export const pricingPeriodSchema = z.object({
     example: 0,
   }),
   endEpoch: epochOutput.meta({
-    description: 'Epoch to which pricing period applies (inclusive).',
+    description: `Epoch to which pricing period applies (inclusive). Also epoch 
+      at which fee auction that created this pricing period occurred.`,
     example: '120',
   }),
   endLogIndex: logIndex.meta({
-    description: 'Log index to which pricing period applies (inclusive).',
+    description: `Log index to which pricing period applies (inclusive). Also  
+      log index at which fee auction that created this pricing period occurred.`,
     example: 10,
   }),
   lotAttoUsd: uintOutput.meta({
@@ -540,7 +545,7 @@ export const paginatedPaymentsListSchema = z
         transactionHash: z.string().nonempty().meta({
           description: 'Hash of the transaction containing the payment.',
         }),
-        railId: z.bigint().min(1n).pipe(bigIntToStringCodec).meta({
+        railId: z.bigint().pipe(bigIntToStringCodec).meta({
           description: 'ID of Filecoin Pay rail the payment was made on.',
         }),
         payer: z.string().nonempty().meta({
