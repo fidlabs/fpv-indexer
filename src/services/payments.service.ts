@@ -74,6 +74,53 @@ export class PaymentsService {
             ]);
           });
       })
+      .leftJoinLateral(
+        (eb) => {
+          return eb
+            .selectFrom('qualified_price_periods_mv as qp')
+            .select((eb) => {
+              const previousPeriodEpoch = sql<
+                string | null
+              >`LAG(epoch) OVER (ORDER BY epoch, log_index)`;
+              const previousPeriodLogIndex = sql<
+                string | null
+              >`LAG(log_index) OVER (ORDER BY epoch, log_index)`;
+
+              return [
+                eb.fn
+                  .coalesce(previousPeriodEpoch, eb.val(activationEpoch))
+                  .as('start_epoch'),
+                eb.fn
+                  .coalesce(eb(previousPeriodLogIndex, '+', '1'), eb.val(0))
+                  .as('start_log_index'),
+                'epoch as end_epoch',
+                'log_index as end_log_index',
+                'qp.claim_tx_hash',
+                'qp.lot_atto_usd',
+                'qp.claim_atto_fil',
+                eb('lot_atto_usd', '/', eb.ref('claim_atto_fil')).as(
+                  'implied_rate',
+                ),
+              ];
+            })
+            .where((eb) => {
+              return eb.or([
+                eb('qp.epoch', '>', eb.ref('p.settled_at_epoch')),
+                eb.and([
+                  eb('qp.epoch', '=', eb.ref('p.settled_at_epoch')),
+                  eb('qp.log_index', '>', eb.ref('p.log_index')),
+                ]),
+              ]);
+            })
+            .orderBy('qp.epoch', 'asc')
+            .orderBy('qp.log_index', 'asc')
+            .limit(1)
+            .as('pp');
+        },
+        (jb) => {
+          return jb.on('r.token', '=', zeroAddress);
+        },
+      )
       .select((eb) => {
         const whitelistedFilecoinPayContractsSubquery = eb
           .selectFrom('filecoin_pay_contract as fpc')
@@ -152,11 +199,19 @@ export class PaymentsService {
               eb.exists(whitelistedTokensSubquery),
             ])
             .as('token_whitelisted'),
+          'pp.start_epoch as pricing_period_start_epoch',
+          'pp.start_log_index as pricing_period_start_log_index',
+          'pp.end_epoch as pricing_period_end_epoch',
+          'pp.end_log_index as pricing_period_end_log_index',
+          'pp.claim_tx_hash as pricing_period_tx_hash',
+          'pp.lot_atto_usd as pricing_period_lot_atto_usd',
+          'pp.claim_atto_fil as pricing_period_claim_atto_fil',
+          'pp.implied_rate as pricing_period_implied_rate',
         ];
       })
       .as('payments');
 
-    let baseResultsQuery = db.selectFrom(basePaymentsQuery);
+    let baseResultsQuery = db.selectFrom(basePaymentsQuery).selectAll();
 
     if (serviceOrchestrator) {
       baseResultsQuery = baseResultsQuery.where(
@@ -167,19 +222,43 @@ export class PaymentsService {
     }
 
     if (fromEpoch !== undefined) {
-      baseResultsQuery = baseResultsQuery.where(
-        'settled_at_epoch',
-        '>=',
-        fromEpoch.toString(),
-      );
+      baseResultsQuery = baseResultsQuery.where((eb) => {
+        const stablecoinPredicate = eb(
+          'settled_at_epoch',
+          '>=',
+          fromEpoch.toString(),
+        );
+        const filPredicate = eb(
+          'pricing_period_end_epoch',
+          '>=',
+          fromEpoch.toString(),
+        );
+
+        return eb.or([
+          eb.and([eb('token', '<>', zeroAddress), stablecoinPredicate]),
+          eb.and([eb('token', '=', zeroAddress), filPredicate]),
+        ]);
+      });
     }
 
     if (toEpoch !== undefined) {
-      baseResultsQuery = baseResultsQuery.where(
-        'settled_at_epoch',
-        '<=',
-        toEpoch.toString(),
-      );
+      baseResultsQuery = baseResultsQuery.where((eb) => {
+        const stablecoinPredicate = eb(
+          'settled_at_epoch',
+          '<=',
+          toEpoch.toString(),
+        );
+        const filPredicate = eb(
+          'pricing_period_end_epoch',
+          '<=',
+          toEpoch.toString(),
+        );
+
+        return eb.or([
+          eb.and([eb('token', '<>', zeroAddress), stablecoinPredicate]),
+          eb.and([eb('token', '=', zeroAddress), filPredicate]),
+        ]);
+      });
     }
 
     if (typeof countsTowardsVolume === 'boolean') {
@@ -194,68 +273,8 @@ export class PaymentsService {
       });
     }
 
-    const enrichedQuery = baseResultsQuery
-      .leftJoinLateral(
-        (eb) => {
-          return eb
-            .selectFrom('qualified_price_periods_mv as qp')
-            .select((eb) => {
-              const previousPeriodEpoch = sql<
-                string | null
-              >`LAG(epoch) OVER (ORDER BY epoch, log_index)`;
-              const previousPeriodLogIndex = sql<
-                string | null
-              >`LAG(log_index) OVER (ORDER BY epoch, log_index)`;
-
-              return [
-                eb.fn
-                  .coalesce(previousPeriodEpoch, eb.val(activationEpoch))
-                  .as('start_epoch'),
-                eb.fn
-                  .coalesce(eb(previousPeriodLogIndex, '+', '1'), eb.val(0))
-                  .as('start_log_index'),
-                'epoch as end_epoch',
-                'log_index as end_log_index',
-                'qp.claim_tx_hash',
-                'qp.lot_atto_usd',
-                'qp.claim_atto_fil',
-                eb('lot_atto_usd', '/', eb.ref('claim_atto_fil')).as(
-                  'implied_rate',
-                ),
-              ];
-            })
-            .where((eb) => {
-              return eb.or([
-                eb('qp.epoch', '>', eb.ref('payments.settled_at_epoch')),
-                eb.and([
-                  eb('qp.epoch', '=', eb.ref('payments.settled_at_epoch')),
-                  eb('qp.log_index', '>', eb.ref('payments.log_index')),
-                ]),
-              ]);
-            })
-            .orderBy('qp.epoch', 'asc')
-            .orderBy('qp.log_index', 'asc')
-            .limit(1)
-            .as('pp');
-        },
-        (jb) => {
-          return jb.on('payments.token', '=', zeroAddress);
-        },
-      )
-      .selectAll('payments')
-      .select([
-        'pp.start_epoch as pricing_period_start_epoch',
-        'pp.start_log_index as pricing_period_start_log_index',
-        'pp.end_epoch as pricing_period_end_epoch',
-        'pp.end_log_index as pricing_period_end_log_index',
-        'pp.lot_atto_usd as pricing_period_lot_atto_usd',
-        'pp.claim_atto_fil as pricing_period_claim_atto_fil',
-        'pp.implied_rate as pricing_period_implied_rate',
-        'pp.claim_tx_hash as pricing_period_tx_hash',
-      ]);
-
     const resultsQuery = applySorting(
-      applyPagination(enrichedQuery, { page, limit }),
+      applyPagination(baseResultsQuery, { page, limit }),
       {
         sort,
         fieldMap: {
