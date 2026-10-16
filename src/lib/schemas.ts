@@ -137,6 +137,9 @@ export const indexerStatusSchema = z.object({
   version: z.string().meta({
     description: 'Instance version',
   }),
+  chainId: z.number().meta({
+    description: 'Chain ID',
+  }),
   indexedUpTo: epochOutput.meta({
     description:
       'Lowest epoch number any of the indexed contract is indexed to',
@@ -441,6 +444,21 @@ export type VolumePostingOrCorrection = z.input<
   typeof volumePostingOrCorrectionSchema
 >;
 
+export const quarterlyVolumePostingsSchema = z.object({
+  quarterNumber: quarterNumber.meta({
+    description: 'Quarter number.',
+  }),
+  aggregatedVolumeAttoUsd: uintOutput.meta({
+    description: 'Sum of all orchestrators final postings.',
+  }),
+  postings: z.array(volumePostingOrCorrectionSchema).meta({
+    description: 'Orchestrators final postings list in given quarter.',
+  }),
+});
+export type QuarterlyVolumePostings = z.input<
+  typeof quarterlyVolumePostingsSchema
+>;
+
 export const orchestratorQuarterlyVolumePostingSchema = z.object({
   serviceOrchestrator: evmAddress.meta({
     description: `Identifying address of Service Orchestrator.`,
@@ -493,6 +511,7 @@ export const gateTargetSchema = z.object({
       'Epoch at which last check occured. Null if no checks occured.',
     example: 1234n.toString(),
   }),
+  capReached: z.boolean(),
   targetAttoUsd: uintOutput.meta({
     description: 'Calculated gate target in atto USD.',
     example: 3_500_000_000_000_000_000_000n.toString(),
@@ -502,7 +521,7 @@ export const gateTargetSchema = z.object({
     example: 3_500,
   }),
 });
-export type GateTarge = z.input<typeof gateTargetSchema>;
+export type GateTarget = z.input<typeof gateTargetSchema>;
 
 export const paginatedPaymentsListSchema = z
   .object({

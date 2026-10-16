@@ -312,6 +312,7 @@ export class IndexerOrchestratorService implements OnApplicationBootstrap {
 
     return {
       version: packageSemver ? packageSemver.toString() : 'N/A',
+      chainId: this.configService.get('CHAIN_ID', { infer: true }),
       isRunning: this.isRunning,
       indexedUpTo: minBigInt(
         ...(contractsStates

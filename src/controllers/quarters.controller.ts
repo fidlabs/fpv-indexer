@@ -3,6 +3,7 @@ import {
   orchestratorQuarterlyVolumeParametersSchema,
   orchestratorQuarterlyVolumePostingSchema,
   Quarter,
+  quarterlyVolumePostingsSchema,
   type QuarterNumberFilter,
   quarterNumberFilterSchema,
   QuarterParameters,
@@ -48,6 +49,22 @@ export class QuartersController {
     return this.quartersService.getQuarterParameters(params);
   }
 
+  @Get('/:quarterNumber/postings')
+  @SerializeOptions({ schema: quarterlyVolumePostingsSchema })
+  @ApiOperation({
+    summary: 'Get posted volume for in given quarter.',
+  })
+  @ApiOkResponse({
+    description: 'Posted volume information.',
+    standardSchema: quarterlyVolumePostingsSchema,
+  })
+  public getQuarterPostings(
+    @Param({ schema: quarterNumberFilterSchema })
+    params: QuarterNumberFilter,
+  ) {
+    return this.quartersService.getQuarterlyVolumePostings(params);
+  }
+
   @Get('/:quarterNumber/postings/:serviceOrchestrator')
   @SerializeOptions({ schema: orchestratorQuarterlyVolumePostingSchema })
   @ApiOperation({
@@ -57,7 +74,7 @@ export class QuartersController {
     description: 'Posted volume information with list of corrections.',
     standardSchema: orchestratorQuarterlyVolumePostingSchema,
   })
-  public getQuarterPostings(
+  public getQuarterPostingsByOrchestrator(
     @Param({ schema: orchestratorQuarterlyVolumeParametersSchema })
     params: OrchestratorQuarterlyVolumeParameters,
   ) {
