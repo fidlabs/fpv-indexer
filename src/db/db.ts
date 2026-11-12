@@ -11,4 +11,12 @@ const dialect = new PostgresDialect({
   },
 });
 
-export const db = new Kysely<DB>({ dialect });
+export const db = new Kysely<DB>({
+  dialect,
+  log(event) {
+    if (event.level === 'error') {
+      console.error('Query failed:', event.query.sql);
+      console.error('Parameters:', event.query.parameters);
+    }
+  },
+});

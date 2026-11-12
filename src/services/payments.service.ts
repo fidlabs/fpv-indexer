@@ -76,15 +76,16 @@ export class PaymentsService {
       })
       .leftJoinLateral(
         (eb) => {
+          // TODO change return type to match schema changes
           return eb
             .selectFrom('qualified_price_periods_mv as qp')
             .select((eb) => {
               const previousPeriodEpoch = sql<
                 string | null
-              >`LAG(epoch) OVER (ORDER BY epoch, log_index)`;
+              >`LAG(epoch) OVER (ORDER BY epoch, tx_position, call_index)`;
               const previousPeriodLogIndex = sql<
                 string | null
-              >`LAG(log_index) OVER (ORDER BY epoch, log_index)`;
+              >`LAG(call_index) OVER (ORDER BY epoch, tx_position, call_index)`;
 
               return [
                 eb.fn
@@ -94,7 +95,7 @@ export class PaymentsService {
                   .coalesce(eb(previousPeriodLogIndex, '+', '1'), eb.val(0))
                   .as('start_log_index'),
                 'epoch as end_epoch',
-                'log_index as end_log_index',
+                'call_index as end_log_index',
                 'qp.claim_tx_hash',
                 'qp.lot_atto_usd',
                 'qp.claim_atto_fil',
@@ -108,12 +109,19 @@ export class PaymentsService {
                 eb('qp.epoch', '>', eb.ref('p.settled_at_epoch')),
                 eb.and([
                   eb('qp.epoch', '=', eb.ref('p.settled_at_epoch')),
-                  eb('qp.log_index', '>', eb.ref('p.log_index')),
+                  eb('qp.tx_position', '>', eb.ref('p.tx_position')),
+                ]),
+                eb.and([
+                  eb('qp.epoch', '=', eb.ref('p.settled_at_epoch')),
+                  eb('qp.tx_position', '=', eb.ref('p.tx_position')),
+                  eb('p.call_index', 'is not', null),
+                  eb('qp.call_index', '>', eb.ref('p.call_index')),
                 ]),
               ]);
             })
             .orderBy('qp.epoch', 'asc')
-            .orderBy('qp.log_index', 'asc')
+            .orderBy('qp.tx_position', 'asc')
+            .orderBy('qp.call_index', 'asc')
             .limit(1)
             .as('pp');
         },

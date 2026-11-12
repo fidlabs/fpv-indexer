@@ -2,7 +2,7 @@ import ServiceRewardsActorABI from '@/abis/service-rewards-actor.abi';
 import { type TransactionContext } from '@/db/db';
 import { ServiceRewardsActorParameterType } from '@/db/enums';
 import { ARCHIVE_NODE_CLIENT, RECENT_NODE_CLIENT } from '@/lib/constants';
-import { maxBigInt, numericToBigInt } from '@/lib/utils';
+import { maxBigInt, numericToBigInt, sortLogs } from '@/lib/utils';
 import { ERC20TokenInfoService } from '@/services/erc-20-token-info.service';
 import { FilfoxApiService } from '@/services/filfox-api.service';
 import { Inject, Injectable } from '@nestjs/common';
@@ -16,7 +16,7 @@ import type {
   FilecoinPublicClient,
   LogForEvents,
 } from '../lib/types';
-import { AbstractIndexer, type GetLogsParameters } from './abstract.indexer';
+import { AbstractIndexer, type GetChangesParameters } from './abstract.indexer';
 
 type EventType = (typeof events)[number];
 type Logs = LogForEvents<EventType>[];
@@ -76,7 +76,7 @@ const events = [
 ] as const satisfies AbiEvent[];
 
 @Injectable()
-export class ServiceRewardsActorIndexer extends AbstractIndexer<EventType> {
+export class ServiceRewardsActorIndexer extends AbstractIndexer<Logs> {
   constructor(
     protected readonly configService: ConfigService<ConfigShape, true>,
     @Inject(RECENT_NODE_CLIENT)
@@ -93,19 +93,21 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<EventType> {
     return ServiceRewardsActorIndexer.name;
   }
 
-  protected async getLogs({
+  protected async getChanges({
     client,
     contractAddress,
     fromBlock,
     toBlock,
-  }: GetLogsParameters): Promise<Logs> {
-    return client.getLogs({
+  }: GetChangesParameters): Promise<Logs> {
+    const logs = await client.getLogs({
       address: contractAddress,
       events,
       fromBlock,
       toBlock,
       strict: true,
     });
+
+    return sortLogs(logs);
   }
 
   protected async updateDb(tx: TransactionContext, logs: Logs): Promise<void> {
