@@ -73,7 +73,7 @@ export class PaymentsService {
               eb('p.settled_at_epoch', '<', eb.ref('sp.to_epoch')),
               eb.and([
                 eb('p.settled_at_epoch', '=', eb.ref('sp.to_epoch')),
-                eb('p.log_index', '<=', eb.ref('sp.to_log_index')),
+                eb('p.log_index', '<', eb.ref('sp.to_log_index')),
               ]),
             ]);
           });

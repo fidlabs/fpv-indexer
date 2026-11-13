@@ -264,6 +264,7 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<Logs> {
   ) {
     const epoch = log.blockNumber.toString();
     const logIndex = log.logIndex;
+    const removalQuarterStartEpoch = this.getQuarterStartEpoch(log.blockNumber);
     const serviceOrchestrator = log.args.orch.toLowerCase();
     const txHash = log.transactionHash.toLowerCase();
 
@@ -279,31 +280,18 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<Logs> {
       .where('removal_epoch', 'is', null)
       .executeTakeFirst();
 
-    // delete binding of removed orchestrator which binding period didn't start
-    await tx
-      .deleteFrom('service_pair')
-      .where('service_orchestrator_id', '=', serviceOrchestrator)
-      .where('to_epoch', 'is', null)
-      .where((eb) => {
-        return eb.or([
-          eb('from_epoch', '>', epoch),
-          eb.and([
-            eb('from_epoch', '=', epoch),
-            eb('from_log_index', '>', logIndex),
-          ]),
-        ]);
-      })
-      .executeTakeFirst();
-
-    // release other bindings of removed orchestrator
+    // Close every binding, including registrations whose effective period
+    // had not started. The actual release position is needed for back-cover.
     await tx
       .updateTable('service_pair')
       .where('service_orchestrator_id', '=', serviceOrchestrator)
       .where('to_epoch', 'is', null)
       .set({
-        to_epoch: epoch,
-        to_log_index: logIndex,
+        // Exclude the old binding for the entire quarter of removal.
+        to_epoch: removalQuarterStartEpoch.toString(),
+        to_log_index: 0,
         unbinding_epoch: epoch,
+        unbinding_log_index: logIndex,
         unbinding_tx_hash: txHash,
       })
       .execute();
@@ -338,18 +326,18 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<Logs> {
       .selectFrom('service_pair')
       .where('operator', '=', log.args.operator.toLowerCase())
       .where('payer', '=', log.args.payer.toLowerCase())
-      .where('to_epoch', 'is not', null)
-      .select(['to_epoch', 'to_log_index'])
-      .orderBy('to_epoch', 'desc')
-      .orderBy('to_log_index', (ob) => ob.desc().nullsLast())
+      .where('unbinding_epoch', 'is not', null)
+      .select(['unbinding_epoch', 'unbinding_log_index'])
+      .orderBy('unbinding_epoch', 'desc')
+      .orderBy('unbinding_log_index', (ob) => ob.desc().nullsLast())
       .executeTakeFirst();
     const previousReleaseEpoch =
-      previousBinding && previousBinding.to_epoch !== null
-        ? numericToBigInt(previousBinding.to_epoch)
+      previousBinding && previousBinding.unbinding_epoch !== null
+        ? numericToBigInt(previousBinding.unbinding_epoch)
         : null;
     const previousReleaseLogIndex =
-      previousBinding && previousBinding.to_log_index !== null
-        ? previousBinding.to_log_index
+      previousBinding && previousBinding.unbinding_log_index !== null
+        ? previousBinding.unbinding_log_index
         : null;
 
     const wasReleasedInFutureEpoch =
@@ -442,6 +430,7 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<Logs> {
         from_epoch: fromEpoch.toString(),
         from_log_index: fromLogIndex,
         binding_epoch: log.blockNumber.toString(),
+        binding_log_index: log.logIndex,
         binding_tx_hash: log.transactionHash.toLowerCase(),
       })
       .executeTakeFirst();
@@ -474,6 +463,7 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<Logs> {
       from_epoch: eventEpochString,
       from_log_index: log.logIndex + 1,
       binding_epoch: eventEpochString,
+      binding_log_index: log.logIndex,
       binding_tx_hash: eventTxHash,
     });
 
@@ -500,6 +490,7 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<Logs> {
             to_epoch: eventEpochString,
             to_log_index: log.logIndex,
             unbinding_epoch: eventEpochString,
+            unbinding_log_index: log.logIndex,
             unbinding_tx_hash: eventTxHash,
           })
           .where('operator', '=', operator)
@@ -519,6 +510,7 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<Logs> {
           to_epoch: eventEpochString,
           to_log_index: log.logIndex,
           unbinding_epoch: eventEpochString,
+          unbinding_log_index: log.logIndex,
           unbinding_tx_hash: eventTxHash,
         })
         .where('operator', '=', operator)
@@ -538,31 +530,15 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<Logs> {
     const payer = log.args.payer.toLowerCase();
     const operator = log.args.operator.toLowerCase();
 
-    // if binding got canceled before it binding period - remove it entirely...
-    await tx
-      .deleteFrom('service_pair')
-      .where('operator', '=', operator)
-      .where('payer', '=', payer)
-      .where('service_orchestrator_id', '=', orchestrator)
-      .where('to_epoch', 'is', null)
-      .where((eb) => {
-        return eb.or([
-          eb('from_epoch', '>', epoch),
-          eb.and([
-            eb('from_epoch', '=', epoch),
-            eb('from_log_index', '>', logIndex),
-          ]),
-        ]);
-      })
-      .executeTakeFirst();
-
-    // ...otherwise unbind it
+    // Keep even a not-yet-effective registration as a closed row. Its actual
+    // release position is needed if the pair is registered again later.
     await tx
       .updateTable('service_pair')
       .set({
         to_epoch: epoch,
         to_log_index: logIndex,
         unbinding_epoch: epoch,
+        unbinding_log_index: logIndex,
         unbinding_tx_hash: log.transactionHash.toLowerCase(),
       })
       .where('operator', '=', operator)
@@ -738,5 +714,17 @@ export class ServiceRewardsActorIndexer extends AbstractIndexer<Logs> {
     });
 
     return (epoch - activationEpoch) / epochsPerQuarter + 1n;
+  }
+
+  private getQuarterStartEpoch(epoch: bigint): bigint {
+    const activationEpoch = this.configService.get('ACTIVATION_EPOCH', {
+      infer: true,
+    });
+    const epochsPerQuarter = this.configService.get('EPOCHS_PER_QUARTER', {
+      infer: true,
+    });
+    const quarter = this.getQuarterForEpoch(epoch);
+
+    return activationEpoch + epochsPerQuarter * (maxBigInt(quarter, 1n) - 1n);
   }
 }
