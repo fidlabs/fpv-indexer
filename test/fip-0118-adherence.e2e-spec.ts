@@ -1285,10 +1285,33 @@ describe('FIP-0118 adherence test', () => {
       ]),
 
       // admitted lists switch during Q1 (should apply from Q2)
-      block(q1.endEpoch, [
+      block(q1.startEpoch + 1n, [
         admittedListsUpdatedTx({
           filecoinPayContracts: [filecoinPayContractB],
           stablecoins: [axlUsdcToken.address],
+        }),
+      ]),
+
+      block(q1.startEpoch + 2n, [
+        // USDFC settlement on contract A (should still count)
+        railOne.railSettledTx({
+          settledUpTo: q1.startEpoch,
+          totalNetPayeeAmount: 1,
+        }),
+        // USDFC settlement on contract B (should still NOT count)
+        railTwo.railSettledTx({
+          settledUpTo: q1.startEpoch,
+          totalNetPayeeAmount: 10,
+        }),
+        // axlUSDC settlement on contract A (should still NOT count)
+        railThree.railSettledTx({
+          settledUpTo: q1.startEpoch,
+          totalNetPayeeAmount: 100,
+        }),
+        // axlUSDC settlement on contract B (should still NOT count)
+        railFour.railSettledTx({
+          settledUpTo: q1.startEpoch,
+          totalNetPayeeAmount: 1000,
         }),
       ]),
 
@@ -1329,20 +1352,24 @@ describe('FIP-0118 adherence test', () => {
       .get(`/volume/2/${orchestratorA}`)
       .expect(200);
 
-    const expectedStablecoinVolume = filToken
+    const expectedStablecoinVolumeQ1 = filToken
+      .formatNumericValue('2')
+      .toString();
+
+    const expectedStablecoinVolumeQ2 = filToken
       .formatNumericValue('1')
       .toString();
 
     expect(responseQ1.body).toMatchObject({
-      stablecoinVolumeAttoUsd: expectedStablecoinVolume,
+      stablecoinVolumeAttoUsd: expectedStablecoinVolumeQ1,
       filVolumeAttoUsd: '0',
-      volumeAttoUsd: expectedStablecoinVolume,
+      volumeAttoUsd: expectedStablecoinVolumeQ1,
     });
 
     expect(responseQ2.body).toMatchObject({
-      stablecoinVolumeAttoUsd: expectedStablecoinVolume,
+      stablecoinVolumeAttoUsd: expectedStablecoinVolumeQ2,
       filVolumeAttoUsd: '0',
-      volumeAttoUsd: expectedStablecoinVolume,
+      volumeAttoUsd: expectedStablecoinVolumeQ2,
     });
   });
 
