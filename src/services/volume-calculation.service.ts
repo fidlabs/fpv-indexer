@@ -259,11 +259,13 @@ export class VolumeCalculationService {
       )
       .where('qp.quarter_num', '=', quarterNumberInt)
       .select((eb) => {
-        // TODO fix those lags and response shape
         const previousPeriodEpoch = sql<
           string | null
         >`LAG(epoch) OVER (ORDER BY epoch, tx_position, call_index)`;
-        const previousPeriodLogIndex = sql<
+        const previousPeriodTxPos = sql<
+          string | null
+        >`LAG(tx_position) OVER (ORDER BY epoch, tx_position, call_index)`;
+        const previousPeriodCallIndex = sql<
           string | null
         >`LAG(call_index) OVER (ORDER BY epoch, tx_position, call_index)`;
 
@@ -283,10 +285,14 @@ export class VolumeCalculationService {
             .coalesce(previousPeriodEpoch, eb.val(activationEpoch))
             .as('start_epoch'),
           eb.fn
-            .coalesce(eb(previousPeriodLogIndex, '+', '1'), eb.val(0))
-            .as('start_log_index'),
+            .coalesce(previousPeriodTxPos, eb.val(0))
+            .as('start_tx_position'),
+          eb.fn
+            .coalesce(eb(previousPeriodCallIndex, '+', '1'), eb.val(0))
+            .as('start_call_index'),
           'epoch as end_epoch',
-          'call_index as end_log_index',
+          'tx_position as end_tx_position',
+          'call_index as end_call_index',
           'qp.lot_atto_usd',
           'qp.claim_atto_fil',
           eb('lot_atto_usd', '/', eb.ref('claim_atto_fil')).as('implied_rate'),
@@ -354,9 +360,11 @@ export class VolumeCalculationService {
         return {
           auctionTransactionHash: result.claim_tx_hash,
           startEpoch: BigInt(result.start_epoch),
-          startLogIndex: parseInt(result.start_log_index.toString(), 10),
+          startTxPosition: parseInt(result.start_tx_position.toString(), 10),
+          startCallIndex: parseInt(result.start_call_index.toString(), 10),
           endEpoch: BigInt(result.end_epoch),
-          endLogIndex: parseInt(result.end_log_index.toString(), 10),
+          endTxPosition: parseInt(result.end_tx_position.toString(), 10),
+          endCallIndex: parseInt(result.end_call_index.toString(), 10),
           lotAttoUsd,
           lotUsd,
           claimAttoFil,
