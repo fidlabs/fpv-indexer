@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.0.0](https://github.com/fidlabs/fpv-indexer/compare/v1.1.1...v2.0.0) (2026-11-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* properly index burnForFees calls made with multicall and/or multisig ([#33](https://github.com/fidlabs/fpv-indexer/issues/33))
+
+### Bug Fixes
+
+* properly apply min lot checks including floor ([#42](https://github.com/fidlabs/fpv-indexer/issues/42)) ([69cdd99](https://github.com/fidlabs/fpv-indexer/commit/69cdd99b4d5d7fdd9066bd31dc4c00d963f8ee56))
+* properly index burnForFees calls made with multicall and/or multisig ([#33](https://github.com/fidlabs/fpv-indexer/issues/33)) ([c812dc1](https://github.com/fidlabs/fpv-indexer/commit/c812dc1440aa0b53f4644666db5c71fdec1f9aa0))
+
 ## [1.1.1](https://github.com/fidlabs/fpv-indexer/compare/v1.1.0...v1.1.1) (2026-11-12)
 
 
