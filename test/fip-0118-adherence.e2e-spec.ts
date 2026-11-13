@@ -2397,6 +2397,10 @@ describe('FIP-0118 adherence test', () => {
 
       // Q2 events
       block(q2.startEpoch + 1n, [
+        sharesSubmittedTx({
+          q: 1n,
+          totalUsd: 0n,
+        }),
         burnForFeesTx({
           token: usdfcToken.address,
           filecoinPayContract: filecoinPayContractA,
