@@ -2,6 +2,7 @@ import { db } from '@/db/db';
 import {
   applyPagination,
   applySorting,
+  epochToQuarterNumber,
   selectQueryToCountQuery,
 } from '@/db/utils';
 import { PaginatedPaymentsList, PaymentsQuery } from '@/lib/schemas';
@@ -36,6 +37,9 @@ export class PaymentsService {
     type PricingPeriod = NonNullable<Payment['pricingPeriod']>;
 
     const activationEpoch = this.configService.get('ACTIVATION_EPOCH', {
+      infer: true,
+    });
+    const epochsPerQuarter = this.configService.get('EPOCHS_PER_QUARTER', {
       infer: true,
     });
 
@@ -136,6 +140,12 @@ export class PaymentsService {
         },
       )
       .select((eb) => {
+        const settlementQuarter = epochToQuarterNumber({
+          epoch: eb.ref('p.settled_at_epoch'),
+          activationEpoch: eb.val(activationEpoch),
+          epochsPerQuarter: eb.val(epochsPerQuarter),
+        });
+
         const whitelistedFilecoinPayContractsSubquery = eb
           .selectFrom('filecoin_pay_contract as fpc')
           .select('contract_address')
@@ -145,22 +155,24 @@ export class PaymentsService {
             'fpc.contract_address',
           )
           .where((eb) => {
-            return eb.or([
-              eb('fpc.admittance_epoch', '<', eb.ref('p.settled_at_epoch')),
-              eb.and([
-                eb('fpc.admittance_epoch', '=', eb.ref('p.settled_at_epoch')),
-                eb('fpc.admittance_log_index', '<=', eb.ref('p.log_index')),
-              ]),
-            ]);
+            const admittanceQuarter = epochToQuarterNumber({
+              epoch: eb.ref('fpc.admittance_epoch'),
+              activationEpoch: eb.val(activationEpoch),
+              epochsPerQuarter: eb.val(epochsPerQuarter),
+            });
+
+            return eb(admittanceQuarter, '<', settlementQuarter);
           })
           .where((eb) => {
+            const removalQuarter = epochToQuarterNumber({
+              epoch: eb.ref('fpc.removal_epoch'),
+              activationEpoch: eb.val(activationEpoch),
+              epochsPerQuarter: eb.val(epochsPerQuarter),
+            });
+
             return eb.or([
               eb('fpc.removal_epoch', 'is', null),
-              eb('p.settled_at_epoch', '<', eb.ref('fpc.removal_epoch')),
-              eb.and([
-                eb('p.settled_at_epoch', '=', eb.ref('fpc.removal_epoch')),
-                eb('p.log_index', '<=', eb.ref('fpc.removal_log_index')),
-              ]),
+              eb(removalQuarter, '>=', settlementQuarter),
             ]);
           });
 
@@ -169,22 +181,24 @@ export class PaymentsService {
           .select('token_address')
           .whereRef('r.token', '=', 't.token_address')
           .where((eb) => {
-            return eb.or([
-              eb('t.admittance_epoch', '<', eb.ref('p.settled_at_epoch')),
-              eb.and([
-                eb('t.admittance_epoch', '=', eb.ref('p.settled_at_epoch')),
-                eb('t.admittance_log_index', '<=', eb.ref('p.log_index')),
-              ]),
-            ]);
+            const admittanceQuarter = epochToQuarterNumber({
+              epoch: eb.ref('t.admittance_epoch'),
+              activationEpoch: eb.val(activationEpoch),
+              epochsPerQuarter: eb.val(epochsPerQuarter),
+            });
+
+            return eb(admittanceQuarter, '<', settlementQuarter);
           })
           .where((eb) => {
+            const removalQuarter = epochToQuarterNumber({
+              epoch: eb.ref('t.removal_epoch'),
+              activationEpoch: eb.val(activationEpoch),
+              epochsPerQuarter: eb.val(epochsPerQuarter),
+            });
+
             return eb.or([
               eb('t.removal_epoch', 'is', null),
-              eb('p.settled_at_epoch', '<', eb.ref('t.removal_epoch')),
-              eb.and([
-                eb('p.settled_at_epoch', '=', eb.ref('t.removal_epoch')),
-                eb('p.log_index', '<=', eb.ref('t.removal_log_index')),
-              ]),
+              eb(removalQuarter, '>=', settlementQuarter),
             ]);
           });
 
