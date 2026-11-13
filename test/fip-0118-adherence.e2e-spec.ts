@@ -1787,9 +1787,9 @@ describe('FIP-0118 adherence test', () => {
       .expect(200);
 
     expect(responseA.body).toMatchObject({
-      stablecoinVolumeAttoUsd: usdfcToken.formatNumericValue(1n).toString(),
+      stablecoinVolumeAttoUsd: usdfcToken.formatNumericValue(0n).toString(),
       filVolumeAttoUsd: '0',
-      volumeAttoUsd: usdfcToken.formatNumericValue(1n).toString(),
+      volumeAttoUsd: usdfcToken.formatNumericValue(0n).toString(),
     });
 
     expect(responseB.body).toMatchObject({
@@ -3355,6 +3355,11 @@ describe('FIP-0118 adherence test', () => {
           orchestrator: orchestratorA,
           wallet: orchestratorA,
         }),
+        bindingDeclaredTx({
+          orchestrator: orchestratorA,
+          payer: payerA,
+          operator: operatorA,
+        }),
       ]),
     ]);
 
@@ -3367,7 +3372,7 @@ describe('FIP-0118 adherence test', () => {
       .expect(200);
 
     expect(response.body).toMatchObject({
-      volumeAttoUsd: usdfcToken.formatNumericValue(1).toString(),
+      volumeAttoUsd: usdfcToken.formatNumericValue(10).toString(),
     });
   });
 

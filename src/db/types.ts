@@ -119,8 +119,10 @@ export type service_pair = {
     to_epoch: string | null;
     to_log_index: number | null;
     binding_epoch: string;
+    binding_log_index: number;
     binding_tx_hash: string;
     unbinding_epoch: string | null;
+    unbinding_log_index: number | null;
     unbinding_tx_hash: string | null;
 };
 export type service_rewards_actor_parameter = {

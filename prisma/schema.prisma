@@ -86,8 +86,10 @@ model service_pair {
   to_epoch                BigInt?
   to_log_index            Int?
   binding_epoch           BigInt
+  binding_log_index       Int
   binding_tx_hash         String
   unbinding_epoch         BigInt?
+  unbinding_log_index     Int?
   unbinding_tx_hash       String?
   service_orchestrator    service_orchestrator @relation(fields: [service_orchestrator_id], references: [id], onUpdate: Cascade)
 
