@@ -14,9 +14,11 @@ const exampleTransactionHash =
 // common zod types
 const uint = z.bigint().min(0n).pipe(bigIntToString);
 const nonNegativeNumber = z.number().min(0);
-const quarterNumber = z
-  .custom<QuarterNumberInput>(isQuarterNumberInput)
-  .transform((i) => QuarterNumber.from(i).toNumber());
+const quarterNumberInput = z.custom<QuarterNumberInput>(isQuarterNumberInput);
+const quarterNumber = z.codec(quarterNumberInput, z.number().int().min(1), {
+  decode: (value) => QuarterNumber.from(value).toNumber(),
+  encode: (value) => QuarterNumber.from(value),
+});
 const paginationMetadata = z.object({
   pagination: z.object({
     page: z.number().int().min(1),
@@ -214,8 +216,14 @@ export const pricingPeriod = z.object({
     description: 'Epoch from which pricing period applies (inclusive).',
     example: '110',
   }),
-  startLogIndex: nonNegativeNumber.meta({
-    description: 'Log index from which pricing period applies (inclusive).',
+  startTxPosition: nonNegativeNumber.meta({
+    description:
+      'Transaction position within a tipset from which pricing period applies (inclusive).',
+    example: 0,
+  }),
+  startCallIndex: nonNegativeNumber.meta({
+    description: `Call index within a transaction from which pricing period
+      applies (inclusive).`,
     example: 0,
   }),
   endEpoch: uint.meta({
@@ -223,9 +231,16 @@ export const pricingPeriod = z.object({
       at which fee auction that created this pricing period occurred.`,
     example: '120',
   }),
-  endLogIndex: nonNegativeNumber.meta({
-    description: `Log index to which pricing period applies (inclusive). Also  
-      log index at which fee auction that created this pricing period occurred.`,
+  endTxPosition: nonNegativeNumber.meta({
+    description: `Transaction position within a tipset to which pricing period
+      applies (inclusive). Also transaction position at which fee auction that
+      created this pricing period occurred.`,
+    example: 10,
+  }),
+  endCallIndex: nonNegativeNumber.meta({
+    description: `Call indexed within a transaction to which this pricing period
+      applies. Also a position of a trace that created the pricing period,
+      within it's transaction.`,
     example: 10,
   }),
   lotAttoUsd: uint.meta({

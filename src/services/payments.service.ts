@@ -76,14 +76,16 @@ export class PaymentsService {
       })
       .leftJoinLateral(
         (eb) => {
-          // TODO change return type to match schema changes
           return eb
             .selectFrom('qualified_price_periods_mv as qp')
             .select((eb) => {
               const previousPeriodEpoch = sql<
                 string | null
               >`LAG(epoch) OVER (ORDER BY epoch, tx_position, call_index)`;
-              const previousPeriodLogIndex = sql<
+              const previousPeriodTxPos = sql<
+                string | null
+              >`LAG(call_index) OVER (ORDER BY epoch, tx_position, call_index)`;
+              const previousPeriodCallIndex = sql<
                 string | null
               >`LAG(call_index) OVER (ORDER BY epoch, tx_position, call_index)`;
 
@@ -92,10 +94,14 @@ export class PaymentsService {
                   .coalesce(previousPeriodEpoch, eb.val(activationEpoch))
                   .as('start_epoch'),
                 eb.fn
-                  .coalesce(eb(previousPeriodLogIndex, '+', '1'), eb.val(0))
-                  .as('start_log_index'),
+                  .coalesce(previousPeriodTxPos, eb.val(0))
+                  .as('start_tx_position'),
+                eb.fn
+                  .coalesce(eb(previousPeriodCallIndex, '+', '1'), eb.val(0))
+                  .as('start_call_index'),
                 'epoch as end_epoch',
-                'call_index as end_log_index',
+                'tx_position as end_tx_position',
+                'call_index as end_call_index',
                 'qp.claim_tx_hash',
                 'qp.lot_atto_usd',
                 'qp.claim_atto_fil',
@@ -208,9 +214,11 @@ export class PaymentsService {
             ])
             .as('token_whitelisted'),
           'pp.start_epoch as pricing_period_start_epoch',
-          'pp.start_log_index as pricing_period_start_log_index',
+          'pp.start_tx_position as pricing_period_start_tx_position',
+          'pp.start_call_index as pricing_period_start_call_index',
           'pp.end_epoch as pricing_period_end_epoch',
-          'pp.end_log_index as pricing_period_end_log_index',
+          'pp.end_tx_position as pricing_period_end_tx_position',
+          'pp.end_call_index as pricing_period_end_call_index',
           'pp.claim_tx_hash as pricing_period_tx_hash',
           'pp.lot_atto_usd as pricing_period_lot_atto_usd',
           'pp.claim_atto_fil as pricing_period_claim_atto_fil',
@@ -336,22 +344,32 @@ export class PaymentsService {
       const pricingPeriod =
         result.pricing_period_tx_hash !== null &&
         result.pricing_period_start_epoch !== null &&
-        result.pricing_period_start_log_index !== null &&
+        result.pricing_period_start_tx_position !== null &&
+        result.pricing_period_start_call_index !== null &&
         result.pricing_period_end_epoch !== null &&
-        result.pricing_period_end_log_index !== null &&
+        result.pricing_period_end_tx_position !== null &&
+        result.pricing_period_end_call_index !== null &&
         result.pricing_period_lot_atto_usd !== null &&
         result.pricing_period_claim_atto_fil !== null &&
         result.pricing_period_implied_rate !== null
           ? ({
               auctionTransactionHash: result.pricing_period_tx_hash,
               startEpoch: numericToBigInt(result.pricing_period_start_epoch),
-              startLogIndex: parseInt(
-                result.pricing_period_start_log_index.toString(),
+              startTxPosition: parseInt(
+                result.pricing_period_start_tx_position.toString(),
+                10,
+              ),
+              startCallIndex: parseInt(
+                result.pricing_period_start_call_index.toString(),
                 10,
               ),
               endEpoch: numericToBigInt(result.pricing_period_end_epoch),
-              endLogIndex: parseInt(
-                result.pricing_period_end_log_index.toString(),
+              endTxPosition: parseInt(
+                result.pricing_period_end_tx_position.toString(),
+                10,
+              ),
+              endCallIndex: parseInt(
+                result.pricing_period_end_call_index.toString(),
                 10,
               ),
               lotAttoUsd: numericToBigInt(result.pricing_period_lot_atto_usd),
