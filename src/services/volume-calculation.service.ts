@@ -52,6 +52,15 @@ export class VolumeCalculationService {
       };
     }
 
+    const uniqueTokensMetadata = db
+      .selectFrom('whitelisted_token')
+      .distinctOn('token_address')
+      .select(['token_address', 'token_decimals'])
+      .orderBy('token_address')
+      .orderBy('admittance_epoch', 'desc')
+      .orderBy('admittance_log_index', 'desc')
+      .as('t');
+
     const stablecoinPayments = db
       .selectFrom('filecoin_pay_payment as p')
       .innerJoin('filecoin_pay_rail as r', (join) => {
@@ -63,29 +72,7 @@ export class VolumeCalculationService {
             'r.filecoin_pay_contract_address',
           );
       })
-      .innerJoin('whitelisted_token as t', (join) => {
-        return join
-          .onRef('r.token', '=', 't.token_address')
-          .on((eb) =>
-            eb.or([
-              eb('t.admittance_epoch', '<', eb.ref('p.settled_at_epoch')),
-              eb.and([
-                eb('t.admittance_epoch', '=', eb.ref('p.settled_at_epoch')),
-                eb('t.admittance_log_index', '<=', eb.ref('p.log_index')),
-              ]),
-            ]),
-          )
-          .on((eb) =>
-            eb.or([
-              eb('t.removal_epoch', 'is', null),
-              eb('p.settled_at_epoch', '<', eb.ref('t.removal_epoch')),
-              eb.and([
-                eb('p.settled_at_epoch', '=', eb.ref('t.removal_epoch')),
-                eb('p.log_index', '<=', eb.ref('t.removal_log_index')),
-              ]),
-            ]),
-          );
-      })
+      .innerJoin(uniqueTokensMetadata, 'r.token', 't.token_address')
       .where(
         'p.filecoin_pay_contract_address',
         'in',
