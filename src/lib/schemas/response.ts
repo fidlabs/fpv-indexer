@@ -125,6 +125,11 @@ export const quarterParameters = z.object({
     description: `Approximate result of dividing "priceBandBps" by 10000.`,
     example: 0.3,
   }),
+  registrationCutoff: uint.meta({
+    description: `Registration cutoff in epochs. Pair registration in the last
+      cutoff of a quarter applies from the start of next quarter.`,
+    example: '20160',
+  }),
   admittedStablecoins: z.array(evmAddress).meta({
     description: 'List of stablecoins addresses admitted in given quarter.',
     example: [
