@@ -1,5 +1,36 @@
 # Changelog
 
+## [2.0.0](https://github.com/fidlabs/fpv-indexer/compare/v1.1.1...v2.0.0) (2026-11-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* do min lot checks properly based on prev q auctions count ([#49](https://github.com/fidlabs/fpv-indexer/issues/49))
+* prevent volume accrual by removed orchestrators ([#48](https://github.com/fidlabs/fpv-indexer/issues/48))
+* make pricing period response shape match changes in #33 ([#46](https://github.com/fidlabs/fpv-indexer/issues/46))
+* properly index burnForFees calls made with multicall and/or multisig ([#33](https://github.com/fidlabs/fpv-indexer/issues/33))
+
+### Features
+
+* add unique indices on payments table ([#51](https://github.com/fidlabs/fpv-indexer/issues/51)) ([f071ced](https://github.com/fidlabs/fpv-indexer/commit/f071ced8356b2b876bb1f2a0b8e127f87a93dab2))
+* expose registration cutoff in quarter parameters endpoint ([#50](https://github.com/fidlabs/fpv-indexer/issues/50)) ([ba12616](https://github.com/fidlabs/fpv-indexer/commit/ba126169c19a7de8f1c57f9a8a938af895305b50))
+
+
+### Bug Fixes
+
+* do min lot checks properly based on prev q auctions count ([#49](https://github.com/fidlabs/fpv-indexer/issues/49)) ([2838056](https://github.com/fidlabs/fpv-indexer/commit/2838056b064de2164d6d6c9a1d7c3368787c231d))
+* make pricing period response shape match changes in [#33](https://github.com/fidlabs/fpv-indexer/issues/33) ([#46](https://github.com/fidlabs/fpv-indexer/issues/46)) ([96e8284](https://github.com/fidlabs/fpv-indexer/commit/96e8284380d2be6388784eb3aee30d80d631be09))
+* prevent volume accrual by removed orchestrators ([#48](https://github.com/fidlabs/fpv-indexer/issues/48)) ([9961ec8](https://github.com/fidlabs/fpv-indexer/commit/9961ec816b75aaf2c8e687828500a90bc0d8b075))
+* properly apply min lot checks including floor ([#42](https://github.com/fidlabs/fpv-indexer/issues/42)) ([69cdd99](https://github.com/fidlabs/fpv-indexer/commit/69cdd99b4d5d7fdd9066bd31dc4c00d963f8ee56))
+* properly apply stablecoin removals to volume calculation ([#43](https://github.com/fidlabs/fpv-indexer/issues/43)) ([1b6d019](https://github.com/fidlabs/fpv-indexer/commit/1b6d01929fc266ea257e34ba7ebb52c2a7d03c50))
+* properly apply whitelists to orchestrators payments query ([#47](https://github.com/fidlabs/fpv-indexer/issues/47)) ([6a70e59](https://github.com/fidlabs/fpv-indexer/commit/6a70e59abae9e794321caa964ff23bf659d034b0))
+* properly index burnForFees calls made with multicall and/or multisig ([#33](https://github.com/fidlabs/fpv-indexer/issues/33)) ([c812dc1](https://github.com/fidlabs/fpv-indexer/commit/c812dc1440aa0b53f4644666db5c71fdec1f9aa0))
+
+
+### CI
+
+* Add release app to works with release-please action ([#44](https://github.com/fidlabs/fpv-indexer/issues/44)) ([aa58807](https://github.com/fidlabs/fpv-indexer/commit/aa5880734a47532efd545e54212d9ad5ef9e96a9))
+
 ## [1.1.1](https://github.com/fidlabs/fpv-indexer/compare/v1.1.0...v1.1.1) (2026-11-12)
 
 
