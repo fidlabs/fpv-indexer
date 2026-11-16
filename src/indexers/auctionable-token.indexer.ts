@@ -93,6 +93,9 @@ export class AuctionableTokenIndexer extends AbstractIndexer<Changes> {
             callIndex,
           } satisfies IndexedTraceResult;
         })
+        .filter((trace, _, indexedTraces) => {
+          return !this.traceOrAncestorFailed(trace, indexedTraces);
+        })
         .filter((trace): trace is DecodableTraceResult => {
           if (!this.isDecodableTraceResult(trace)) return false;
 
@@ -238,5 +241,21 @@ export class AuctionableTokenIndexer extends AbstractIndexer<Changes> {
       isAddress(traceResult.action.to) &&
       !!traceResult.action.to
     );
+  }
+
+  private traceOrAncestorFailed(
+    trace: TraceResult,
+    traces: TraceResult[],
+  ): boolean {
+    return traces.some((candidate) => {
+      if (!candidate.error) return false;
+
+      const path = candidate.traceAddress;
+
+      return (
+        path.length <= trace.traceAddress.length &&
+        path.every((frame, index) => frame === trace.traceAddress[index])
+      );
+    });
   }
 }

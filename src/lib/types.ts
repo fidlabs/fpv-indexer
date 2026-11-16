@@ -23,6 +23,7 @@ export type TraceAction = {
 
 export type TraceResult = {
   type: string;
+  error?: string;
   subtraces: number;
   traceAddress: number[];
   action: TraceAction;
