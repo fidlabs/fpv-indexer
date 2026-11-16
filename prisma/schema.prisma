@@ -189,6 +189,8 @@ model filecoin_pay_payment {
   total_amount                  Decimal           @db.Decimal(78, 0)
   rail                          filecoin_pay_rail @relation(fields: [filecoin_pay_contract_address, rail_id], references: [filecoin_pay_contract_address, rail_id])
 
+  @@unique([tx_hash, log_index])
+  @@unique([tx_hash, tx_position, call_index], where: { call_index: { not: null } })
   @@index([filecoin_pay_contract_address, rail_id, settled_at_epoch])
 }
 
